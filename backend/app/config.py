@@ -48,8 +48,13 @@ class Settings(BaseSettings):
 
     bootstrap_admin_email: str = ""     # first boot only: creates this admin when no users exist
     bootstrap_admin_password: str = ""
+    demo_mode: bool = False  # demo dataset + one-click demo logins (also on with APP_ENV=demo)
     seed_on_startup: bool = False  # demo data with known passwords: never in production
     audit_retention_years: int = 5  # NFR7 (informational; rows are never deleted)
+
+    @property
+    def is_demo(self) -> bool:
+        return self.demo_mode or self.app_env.lower() == "demo"
 
     def production_problems(self) -> list[str]:
         """Settings that make a production boot unsafe. Empty outside production."""
@@ -62,6 +67,8 @@ class Settings(BaseSettings):
             problems.append("CORS_ORIGINS must list explicit origins, not '*'")
         if self.seed_on_startup:
             problems.append("SEED_ON_STARTUP must be false (demo accounts use a published password)")
+        if self.demo_mode:
+            problems.append("DEMO_MODE must be false (demo logins use a published password)")
         if self.demo_autopilot:
             problems.append("DEMO_AUTOPILOT must be false (it drives simulated ambulances)")
         if not self.data_encryption_key.strip():

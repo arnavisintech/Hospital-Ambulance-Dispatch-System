@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("Refusing to start in production: " + "; ".join(problems))
     hub.bind_loop(asyncio.get_running_loop())
     Base.metadata.create_all(engine)
-    if s.seed_on_startup:
+    if s.seed_on_startup or s.is_demo:
         try:
             from .seed import seed_if_empty
             with SessionLocal() as db:

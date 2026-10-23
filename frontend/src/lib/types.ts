@@ -227,3 +227,8 @@ export interface WsMessage<T = unknown> { type: string; data: T; ts?: string }
 export interface ReversePlace { label: string; locality?: string | null; address?: string | null }
 /** `GET /geo/search?q=` item */
 export interface PlaceResult { label: string; lat: number; lng: number }
+
+/* ---------------------------------------------------------------- client config (GET /public/config) */
+
+export interface DemoAccount { role: Role; label: string; email: string; hint: string }
+export interface ClientConfig { demo_mode: boolean; demo_password: string | null; demo_accounts: DemoAccount[] }

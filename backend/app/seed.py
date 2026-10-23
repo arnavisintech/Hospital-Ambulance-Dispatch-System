@@ -21,6 +21,16 @@ log = logging.getLogger("hads.seed")
 DEMO_PASSWORD = "Hads@1234"
 SEED = 20240611
 
+# One demo login per role (shown on the login page in demo mode only): role, label, email, hint
+DEMO_ACCOUNTS = [
+    ("requester", "Requester", "user@hads.in", "Request & track an ambulance"),
+    ("crew", "Crew", "crew1@hads.in", "Accept trips and navigate"),
+    ("hospital_staff", "Hospital", "staff1@hads.in", "Capacity and incoming patients"),
+    ("controller", "Controller", "controller@hads.in", "Live dispatch board"),
+    ("admin", "Admin", "admin@hads.in", "Onboarding and platform setup"),
+    ("authority", "Authority", "authority@hads.in", "City oversight and KPIs"),
+]
+
 # Real Chennai partner hospitals (public names, approximate campus coordinates).
 # name, address, lat, lng, beds, icu, specialists
 HOSPITALS = [
