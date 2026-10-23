@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { CheckCheck, CreditCard, FileCheck2, Receipt, Siren, Star, XCircle } from 'lucide-react';
+import { CheckCheck, FileCheck2, Receipt, Siren, Star, XCircle } from 'lucide-react';
 import { MobileAppLayout } from '../../components/layout/MobileAppLayout';
 import { HospitalMarker, MapCanvas, PatientPin, FitBounds } from '../../components/map';
 import {
-  Button, ButtonLink, Card, CardHeader, Input, Modal, SegmentedControl, SkeletonText, StatusPill, Textarea, useToast,
+  Button, ButtonLink, Card, CardHeader, Input, Modal, SkeletonText, StatusPill, Textarea, useToast,
 } from '../../components/ui';
 import { post } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { fmtClock, fmtDate, fmtDuration, fmtMoney } from '../../lib/format';
 import type { BillSummary, Feedback, Tracking } from '../../lib/types';
 import { CrewCard, TimelineToggle } from './components/TripCards';
-import { PAY_METHODS, tripHeadline, tripTimes } from './trip';
+import { tripHeadline, tripTimes } from './trip';
 
 /** Completed (summary, bill, rating) or cancelled/failed request. */
 export function TripDone({ data, onChanged }: { data: Tracking; onChanged: () => void }) {
@@ -108,9 +108,7 @@ function TimeRow({ label, at }: { label: string; at: string | null }) {
 
 function BillCard({ bill, onChanged }: { bill: BillSummary | null; onChanged: () => void }) {
   const { success, error } = useToast();
-  const [payOpen, setPayOpen] = useState(false);
   const [claimOpen, setClaimOpen] = useState(false);
-  const [method, setMethod] = useState<string>('upi');
   const [insurer, setInsurer] = useState('');
   const [policy, setPolicy] = useState('');
   const [busy, setBusy] = useState(false);
@@ -127,15 +125,6 @@ function BillCard({ bill, onChanged }: { bill: BillSummary | null; onChanged: ()
   const paid = bill.payment_status === 'paid';
   const claimStatus = bill.insurance_claim_status && bill.insurance_claim_status !== 'none' ? bill.insurance_claim_status : null;
 
-  const pay = async () => {
-    setBusy(true);
-    try {
-      await post(`/billing/${bill.id}/pay`, { method });
-      success('Payment received — thank you');
-      setPayOpen(false);
-      onChanged();
-    } catch (e) { error(e); } finally { setBusy(false); }
-  };
   const claim = async () => {
     const errs = { insurer: insurer.trim().length < 2 ? 'Enter your insurer' : undefined, policy: policy.trim().length < 3 ? 'Enter your policy number' : undefined };
     setClaimErr(errs);
@@ -163,16 +152,14 @@ function BillCard({ bill, onChanged }: { bill: BillSummary | null; onChanged: ()
           <FileCheck2 size={16} className="text-ink-500" aria-hidden /> Insurance claim <StatusPill status={claimStatus} kind="generic" />
         </p>
       )}
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        {!paid && <Button icon={CreditCard} onClick={() => setPayOpen(true)}>Pay now</Button>}
-        {!claimStatus && <Button variant="secondary" icon={FileCheck2} onClick={() => setClaimOpen(true)} className={paid ? 'col-span-2' : ''}>Claim insurance</Button>}
-      </div>
-
-      <Modal open={payOpen} onClose={() => setPayOpen(false)} title={`Pay ${fmtMoney(bill.amount)}`} size="sm"
-        footer={<><Button variant="secondary" onClick={() => setPayOpen(false)}>Not now</Button><Button onClick={() => void pay()} loading={busy}>Pay {fmtMoney(bill.amount)}</Button></>}>
-        <SegmentedControl ariaLabel="Payment method" fullWidth items={PAY_METHODS.map((m) => ({ value: m.value, label: m.label }))} value={method} onChange={setMethod} />
-        <p className="mt-3 text-sm text-ink-500">Demo payment — no money is charged.</p>
-      </Modal>
+      {!paid && !claimStatus && (
+        <p className="mt-3 text-sm text-ink-500">Pay at the hospital's billing desk (cash, card or UPI). This updates once they confirm the payment.</p>
+      )}
+      {!claimStatus && !paid && (
+        <div className="mt-4">
+          <Button variant="secondary" icon={FileCheck2} onClick={() => setClaimOpen(true)} fullWidth>Claim insurance instead</Button>
+        </div>
+      )}
 
       <Modal open={claimOpen} onClose={() => setClaimOpen(false)} title="Claim insurance" description="We'll send the bill to your insurer for this trip." size="sm"
         footer={<><Button variant="secondary" onClick={() => setClaimOpen(false)}>Cancel</Button><Button onClick={() => void claim()} loading={busy}>Submit claim</Button></>}>

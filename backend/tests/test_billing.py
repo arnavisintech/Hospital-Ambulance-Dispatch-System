@@ -20,6 +20,12 @@ def _pending_bill(env):
                                                       BillingRecord.insurance_claim_status.is_(None))).scalars().first().id
 
 
+def _staff_of(env, bid) -> str:
+    """Seed: staff{i}@hads.in works at hospital id i."""
+    with env.db() as db:
+        return f"staff{db.get(TripRecord, db.get(BillingRecord, bid).trip_id).destination_hospital_id}@hads.in"
+
+
 def test_fare_formula_and_split_decimal():
     s = {"base_fare": 500, "per_km_rate": 25, "als_surcharge": 400, "revenue_share_pct": 70}
     f = billing.compute_fare(s, 10.3, "ALS", None)
@@ -62,10 +68,19 @@ def test_pay_flow_and_permissions(env):
     bid = _pending_bill(env)
     c = env.client
     assert c.get("/api/billing", headers=env.as_("controller@hads.in")).status_code == 403
-    r = c.post(f"/api/billing/{bid}/pay", json={"method": "upi"}, headers=env.as_("user@hads.in"))
+    staff = env.as_(_staff_of(env, bid))
+    other = next(f"staff{i}@hads.in" for i in range(1, 9) if f"staff{i}@hads.in" != _staff_of(env, bid))
+    # payments are recorded by the hospital that collected them, never self-attested by the patient
+    assert c.post(f"/api/billing/{bid}/pay", json={"method": "upi"}, headers=env.as_("user@hads.in")).status_code == 403
+    assert c.post(f"/api/billing/{bid}/pay", json={"method": "upi"}, headers=env.as_(other)).status_code == 404
+    r = c.post(f"/api/billing/{bid}/pay", json={"method": "upi", "reference": "UTR 4471 0021"}, headers=staff)
     assert r.status_code == 200 and r.json()["payment_status"] == "paid"
-    assert c.post(f"/api/billing/{bid}/pay", json={"method": "upi"}, headers=env.as_("user@hads.in")).status_code == 409
-    assert c.post(f"/api/billing/{bid}/pay", json={"method": "5"}, headers=env.as_("user@hads.in")).status_code == 422
+    assert c.post(f"/api/billing/{bid}/pay", json={"method": "upi"}, headers=staff).status_code == 409
+    assert c.post(f"/api/billing/{bid}/pay", json={"method": "5"}, headers=staff).status_code == 422
+    with env.db() as db:
+        from app.models import AuditLog
+        row = db.execute(select(AuditLog).where(AuditLog.action == "billing.pay", AuditLog.entity_id == str(bid))).scalars().one()
+        assert row.details["reference"] == "UTR 4471 0021"
     assert c.get("/api/billing", headers=env.as_("staff1@hads.in")).status_code == 200
 
 
@@ -78,7 +93,7 @@ def test_claim_workflow_validated_transitions(env):
     assert j["payment_status"] == "insurance_pending" and j["insurance_claim_status"] == "submitted"
     cid = j["claim"]["id"]
     assert c.post(f"/api/billing/{bid}/claim", json={"insurer": "X Ins", "policy_number": "P1234"}, headers=usr).status_code == 409
-    assert c.post(f"/api/billing/{bid}/pay", json={"method": "upi"}, headers=usr).status_code == 409   # claim active
+    assert c.post(f"/api/billing/{bid}/pay", json={"method": "upi"}, headers=env.as_(_staff_of(env, bid))).status_code == 409  # claim active
     assert c.post(f"/api/billing/claims/{cid}/status", json={"status": "settled"}, headers=usr).status_code == 403
     assert c.post(f"/api/billing/claims/{cid}/status", json={"status": "approved"}, headers=adm).status_code == 409  # skip
     for st in ("under_review", "approved", "settled"):
@@ -98,7 +113,7 @@ def test_rejected_claim_returns_bill_to_patient(env):
     b = c.get("/api/billing?limit=500", headers=adm).json()
     row = next(x for x in b if x["id"] == bid)
     assert row["payment_status"] == "pending" and row["insurance_claim_status"] == "rejected"
-    assert c.post(f"/api/billing/{bid}/pay", json={"method": "card"}, headers=usr).status_code == 200
+    assert c.post(f"/api/billing/{bid}/pay", json={"method": "card"}, headers=adm).status_code == 200
 
 
 def test_access_scoping_and_trip_lookup(env):

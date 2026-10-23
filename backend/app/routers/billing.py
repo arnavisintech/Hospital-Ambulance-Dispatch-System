@@ -15,6 +15,7 @@ router = APIRouter(prefix="/api/billing", tags=["billing"])
 
 class PayIn(BaseModel):
     method: str = Field(min_length=2, max_length=24, pattern=r"^[A-Za-z_ ]+$")  # e.g. card, upi, cash
+    reference: str | None = Field(None, max_length=60)  # receipt / UTR number
 
 
 class ClaimIn(BaseModel):
@@ -85,9 +86,12 @@ def list_bills(payment_status: PaymentStatus | None = None, limit: int = Query(5
 
 @router.post("/{bill_id}/pay")
 def pay(bill_id: int, body: PayIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    bill, trip = _bill_for_user(db, user, bill_id)
+    """Record a payment collected by the destination hospital (or an admin). There is no payment gateway, so a
+    patient can never mark their own bill paid."""
+    bill, trip = _bill_for_user(db, user, bill_id, roles_ok=(Role.admin, Role.hospital_staff))
     svc.pay_bill(db, bill, body.method)
-    audit.log(db, "billing.pay", "bill", bill.id, user.id, {"method": body.method.lower(), "amount": float(bill.amount)})
+    audit.log(db, "billing.pay", "bill", bill.id, user.id,
+              {"method": body.method.lower(), "amount": float(bill.amount), "reference": (body.reference or "").strip() or None})
     db.commit()
     return svc.bill_out(db, bill, trip=trip)
 
