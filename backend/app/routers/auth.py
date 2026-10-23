@@ -2,13 +2,13 @@
 import re
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, ratelimit
 from ..db import get_db
 from ..deps import current_user
 from ..models import Role, User
@@ -18,6 +18,8 @@ from ..services.trips import user_ambulance_id, user_hospital_id
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _PHONE = re.compile(r"^\+?[0-9][0-9\- ]{6,18}$")
+LOGIN_FAILURES = ratelimit.limiter("login_failures", 5, 900)  # 5 wrong passwords / 15 min per IP + identifier
+_signup = ratelimit.limit("signup", 10, 3600)                # register + guest: 10 / hour per IP
 
 
 def user_out(db: Session, u: User) -> dict:
@@ -77,7 +79,7 @@ class LoginIn(BaseModel):
     password: str
 
 
-@router.post("/register", status_code=201)
+@router.post("/register", status_code=201, dependencies=[Depends(_signup)])
 def register(body: RegisterIn, db: Session = Depends(get_db)):
     if body.role != Role.requester.value:
         raise HTTPException(403, "Only requesters can self-register; staff accounts are created by an administrator")
@@ -100,7 +102,7 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
     return _token_response(db, u)
 
 
-@router.post("/guest", status_code=201)
+@router.post("/guest", status_code=201, dependencies=[Depends(_signup)])
 def guest(body: GuestIn | None = None, db: Session = Depends(get_db)):
     """NFR5: 2-tap SOS. Creates a throw-away requester with a random password."""
     body = body or GuestIn()
@@ -117,15 +119,21 @@ def guest(body: GuestIn | None = None, db: Session = Depends(get_db)):
 
 
 @router.post("/login")
-def login(body: LoginIn, db: Session = Depends(get_db)):
+def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
     ident = body.identifier.strip()
+    key = f"{ratelimit.client_ip(request)}:{ident.lower()}"
+    wait = LOGIN_FAILURES.blocked(key)
+    if wait:
+        raise ratelimit.too_many(wait, "Too many failed sign-in attempts")
     u = db.execute(select(User).where(or_(User.email == ident.lower(), User.phone == ident))).scalars().first()
     if u is None or not verify_password(body.password, u.password_hash):
+        LOGIN_FAILURES.hit(key)
         audit.log(db, "auth.login_failed", "user", u.id if u else None, u.id if u else None, {})
         db.commit()
         raise HTTPException(401, "Invalid credentials")
     if not u.is_active:
         raise HTTPException(403, "Account deactivated")
+    LOGIN_FAILURES.reset(key)
     audit.log(db, "auth.login", "user", u.id, u.id, {"role": u.role.value})
     db.commit()
     return _token_response(db, u)

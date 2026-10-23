@@ -5,13 +5,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import audit, events
+from .. import audit, events, ratelimit
 from ..db import get_db
 from ..deps import current_user, require_roles
 from ..models import EmergencyRequest, IncidentType, RequestStatus, Role, TripRecord, User, utcnow
 from ..services import dispatch, sharing, tracking as tracking_svc, trips
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
+SOS_LIMIT = ratelimit.limiter("sos", 20, 3600)  # new requests per requester per hour; controllers exempt
 
 
 class RequestIn(BaseModel):
@@ -45,6 +46,10 @@ def _create(body: RequestIn, user: User, channel: str, db: Session, bg: Backgrou
             response.status_code = 200
             return trips.request_out(db, existing)
     is_requester = user.role == Role.requester
+    if is_requester:  # idempotent retries returned above and never count
+        ok, retry = SOS_LIMIT.hit(f"sos:{user.id}")
+        if not ok:
+            raise ratelimit.too_many(retry, "Too many new requests from this account; call 108 if this is urgent")
     req = EmergencyRequest(
         client_uuid=body.client_uuid, requester_id=user.id if is_requester else None,
         caller_name=body.caller_name or (user.name if is_requester else None),

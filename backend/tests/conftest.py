@@ -25,7 +25,9 @@ PATIENT = (13.0827, 80.2707)  # Chennai centre
 
 @pytest.fixture(autouse=True)
 def fresh_db():
+    from app import ratelimit
     from app.services import crew_actions, geocode, legs, routing, trips
+    ratelimit.reset_all()
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     routing.reset()
