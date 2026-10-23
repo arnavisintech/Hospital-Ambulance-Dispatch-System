@@ -12,6 +12,7 @@ from sqlalchemy import (JSON, Boolean, DateTime, Enum, Float, ForeignKey, Intege
                         UniqueConstraint, event, inspect)
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
+from .crypto import EncryptedText
 from .db import Base
 
 
@@ -198,15 +199,15 @@ class EmergencyRequest(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     client_uuid: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)  # idempotent retry (UC-1 E1)
     requester_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    caller_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    caller_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    caller_name: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)   # PII: encrypted at rest (NFR3)
+    caller_phone: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     channel: Mapped[str] = mapped_column(String(8), default="app")  # app | ivr
     lat: Mapped[float] = mapped_column(Float)
     lng: Mapped[float] = mapped_column(Float)
-    address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     incident_type: Mapped[IncidentType] = mapped_column(_enum(IncidentType), default=IncidentType.other)
     severity: Mapped[int] = mapped_column(Integer, default=3)  # 1 (minor) .. 5 (critical)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     status: Mapped[RequestStatus] = mapped_column(_enum(RequestStatus), default=RequestStatus.received, index=True)
     ambulance_id: Mapped[int | None] = mapped_column(ForeignKey("ambulances.id"), nullable=True)
     destination_hospital_id: Mapped[int | None] = mapped_column(ForeignKey("hospitals.id"), nullable=True)
