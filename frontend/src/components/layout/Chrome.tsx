@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LogOut } from 'lucide-react';
+import { KeyRound, LogOut } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useConnection } from '../../context/ConnectionContext';
 import { cn } from '../../lib/cn';
+import { ChangePasswordModal } from '../ChangePasswordModal';
 import { Avatar } from '../ui/Avatar';
 import { Menu, type MenuItem } from '../ui/Menu';
 import { APP_MENU, ROLE_LABEL } from './nav';
@@ -69,13 +71,16 @@ export function ConnectionIndicator({ compact, className }: { compact?: boolean;
 export function UserMenu({ size = 'sm' }: { size?: 'sm' | 'md' }) {
   const { user, logout } = useAuth();
   const nav = useNavigate();
+  const [pwOpen, setPwOpen] = useState(false);
   if (!user) return null;
   const links = APP_MENU[user.role] ?? [];
   const items: MenuItem[] = [
     ...links.map((l) => ({ label: l.label, icon: l.icon, onSelect: () => nav(l.to) })),
+    { label: 'Change password', icon: KeyRound, onSelect: () => setPwOpen(true) },
     { label: 'Sign out', icon: LogOut, danger: true, onSelect: () => { logout(); nav('/login'); } },
   ];
   return (
+    <>
     <Menu
       header={
         <div className="min-w-0">
@@ -95,5 +100,7 @@ export function UserMenu({ size = 'sm' }: { size?: 'sm' | 'md' }) {
         </button>
       )}
     />
+    <ChangePasswordModal open={pwOpen} onClose={() => setPwOpen(false)} />
+    </>
   );
 }

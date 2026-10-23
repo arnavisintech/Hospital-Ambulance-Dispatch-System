@@ -17,6 +17,8 @@ def user_from_token(db: Session, token: str) -> User:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
     if not user or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Inactive or unknown user")
+    if int(payload.get("tv", 0)) != (user.token_version or 0):  # password change / reset / deactivation
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session revoked; sign in again")
     return user
 
 

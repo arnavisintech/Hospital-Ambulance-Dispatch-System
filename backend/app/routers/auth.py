@@ -25,11 +25,12 @@ _signup = ratelimit.limit("signup", 10, 3600)                # register + guest:
 def user_out(db: Session, u: User) -> dict:
     return {"id": u.id, "name": u.name, "phone": u.phone, "email": u.email, "role": u.role.value,
             "hospital_id": user_hospital_id(db, u) if u.role == Role.hospital_staff else None,
-            "ambulance_id": user_ambulance_id(db, u) if u.role == Role.crew else None}
+            "ambulance_id": user_ambulance_id(db, u) if u.role == Role.crew else None,
+            "must_change_password": bool(u.must_change_password)}
 
 
 def _token_response(db: Session, u: User) -> dict:
-    return {"token": create_token(u.id, u.role.value), "user": user_out(db, u)}
+    return {"token": create_token(u.id, u.role.value, u.token_version or 0), "user": user_out(db, u)}
 
 
 def _check_phone(v):
@@ -72,6 +73,11 @@ class GuestIn(BaseModel):
     @classmethod
     def _phone(cls, v):
         return _check_phone(v)
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=8, max_length=72)
 
 
 class LoginIn(BaseModel):
@@ -142,3 +148,18 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
 @router.get("/me")
 def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
     return user_out(db, user)
+
+
+@router.post("/password")
+def change_password(body: PasswordChangeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Change own password. Every other session (old tokens, websocket tickets) is revoked."""
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(400, "Current password is incorrect")
+    if body.new_password == body.current_password:
+        raise HTTPException(422, "Choose a password different from the current one")
+    user.password_hash = hash_password(body.new_password)
+    user.must_change_password = False
+    user.token_version = (user.token_version or 0) + 1
+    audit.log(db, "auth.password_change", "user", user.id, user.id, {})
+    db.commit()
+    return _token_response(db, user)

@@ -1,3 +1,4 @@
+import secrets
 from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -9,6 +10,7 @@ from .. import audit
 from ..db import get_db
 from ..deps import require_roles
 from ..models import Ambulance, AmbulanceStatus, DarkStation, Hospital, Role, User
+from ..security import hash_password
 from ..services import onboarding as ob
 from ..services.billing import get_platform_settings
 
@@ -167,9 +169,26 @@ def patch_user(user_id: int, body: UserPatch, db: Session = Depends(get_db), adm
         raise HTTPException(409, "You cannot deactivate your own account")
     for k, v in changes.items():
         setattr(u, k, v)
+    if changes.get("is_active") is False:
+        u.token_version = (u.token_version or 0) + 1  # signed-in sessions end immediately
     audit.log(db, "admin.user.update", "user", u.id, admin.id, changes)
     db.commit()
     return ob.user_out(db, u)
+
+
+@router.post("/users/{user_id}/reset-password")
+def reset_password(user_id: int, db: Session = Depends(get_db), admin: User = Depends(_admin)):
+    """Issue a one-time temporary password (shown once). The user must change it at next sign-in."""
+    u = db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "User not found")
+    temp = secrets.token_urlsafe(12)
+    u.password_hash = hash_password(temp)
+    u.must_change_password = True
+    u.token_version = (u.token_version or 0) + 1
+    audit.log(db, "admin.user.reset_password", "user", u.id, admin.id, {})
+    db.commit()
+    return {"temporary_password": temp}
 
 
 # ------------------------------------------------------------------ settings

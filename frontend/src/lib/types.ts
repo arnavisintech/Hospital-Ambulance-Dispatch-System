@@ -9,6 +9,7 @@ export interface User {
   hospital_id?: number | null;
   ambulance_id?: number | null;
   is_active?: boolean;
+  must_change_password?: boolean;
 }
 
 export interface TokenResponse { token: string; user: User }

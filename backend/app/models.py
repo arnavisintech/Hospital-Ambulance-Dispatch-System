@@ -110,6 +110,8 @@ class User(Base):
     role: Mapped[Role] = mapped_column(_enum(Role), index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    token_version: Mapped[int] = mapped_column(Integer, default=0)  # bump to revoke every issued token
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Hospital(Base):

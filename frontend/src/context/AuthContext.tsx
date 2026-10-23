@@ -9,6 +9,8 @@ interface AuthCtx {
   register: (b: { name: string; phone?: string; email?: string; password: string }) => Promise<User>;
   guest: (b?: { name?: string; phone?: string }) => Promise<User>;
   logout: () => void;
+  /** Change own password; the server revokes other sessions and returns a fresh token. */
+  changePassword: (current: string, next: string) => Promise<User>;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -50,6 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accept(await api<TokenResponse>('/auth/login', { method: 'POST', body: { identifier, password }, auth: false })),
     register: async (b) => accept(await post<TokenResponse>('/auth/register', b)),
     guest: async (b = {}) => accept(await post<TokenResponse>('/auth/guest', b)),
+    changePassword: async (current, next) =>
+      accept(await post<TokenResponse>('/auth/password', { current_password: current, new_password: next })),
   }), [user, loading, logout]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

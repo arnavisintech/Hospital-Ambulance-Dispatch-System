@@ -17,10 +17,11 @@ def verify_password(pw: str, hashed: str) -> bool:
         return False
 
 
-def create_token(user_id: int, role: str) -> str:
+def create_token(user_id: int, role: str, token_version: int = 0) -> str:
     s = get_settings()
     exp = datetime.now(timezone.utc) + timedelta(minutes=s.jwt_expire_minutes)
-    return jwt.encode({"sub": str(user_id), "role": role, "exp": exp}, s.jwt_secret, algorithm="HS256")
+    return jwt.encode({"sub": str(user_id), "role": role, "tv": token_version, "exp": exp}, s.jwt_secret,
+                      algorithm="HS256")
 
 
 def decode_token(token: str) -> dict:

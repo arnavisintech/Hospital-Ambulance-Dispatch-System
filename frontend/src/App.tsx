@@ -1,5 +1,6 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { ForcedPasswordChange } from './components/ChangePasswordModal';
 import { RequireRole } from './components/RequireRole';
 import { ConsoleLayout } from './components/layout/ConsoleLayout';
 import { MobileAppLayout } from './components/layout/MobileAppLayout';
@@ -56,6 +57,7 @@ const CONSOLE_ROLES: Role[] = ['controller', 'admin', 'authority', 'hospital_sta
 export default function App() {
   return (
     <Suspense fallback={<Loading />}>
+      <ForcedPasswordChange />
       <Routes>
         {/* Public */}
         <Route path="/" element={<Home />} />
