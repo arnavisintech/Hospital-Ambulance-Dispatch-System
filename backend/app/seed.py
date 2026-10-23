@@ -140,7 +140,7 @@ def seed_if_empty(db: Session, days: int = 90, historical_trips: int = 60, train
     demographics.replace_demographics(db, demographics.generate_chennai_demographics(), "synthetic")
 
     # 90 days of synthetic history
-    df = generate_history(days=days, end=now, seed=SEED)
+    df = generate_history(days=days, end=now, seed=SEED, demographics=demographics.load_dicts(db))
     db.bulk_insert_mappings(IncidentHistory, to_rows(df))
     db.flush()
 

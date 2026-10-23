@@ -101,3 +101,57 @@ def test_empty_db_returns_empty_risk():
         assert analytics.model_info(db)["model_version"] is None
     r = e.client.get("/api/analytics/risk-map", headers={"Authorization": "Bearer x"})
     assert r.status_code == 401
+
+
+# ---------------------------------------------------------------- Task 12: demographic-driven history
+from app import demographics as demo_mod  # noqa: E402
+from app.synthetic import AGE_GROUPS  # noqa: E402
+
+_END = datetime(2026, 3, 2, tzinfo=timezone.utc)
+
+
+def _demo():
+    return {r["zone_id"]: {k: r[k] for k in ("households", "pop_0_14", "pop_15_59", "pop_60_74", "pop_75_plus")}
+            for r in demo_mod.generate_chennai_demographics(seed=11)}
+
+
+def test_history_without_demographics_has_unknown_age():
+    df = generate_history(7, end=_END, seed=3)
+    assert set(df.patient_age_group) == {"unknown"}
+
+
+def test_demographic_history_deterministic_and_age_tagged():
+    d = _demo()
+    a = generate_history(14, end=_END, seed=5, demographics=d)
+    b = generate_history(14, end=_END, seed=5, demographics=d)
+    assert a.equals(b)
+    assert set(a.patient_age_group) <= set(AGE_GROUPS) and a.patient_age_group.nunique() == 4
+    base = len(generate_history(14, end=_END, seed=5))
+    assert abs(len(a) - base) / base < 0.10  # same expected volume, split between traffic and residences
+
+
+def test_volume_tracks_households():
+    import pandas as pd
+    d = _demo()
+    df = generate_history(30, end=_END, seed=5, demographics=d)
+    res = df[df.zone_id.isin(d.keys())].groupby("zone_id").size()
+    hh = pd.Series({z: v["households"] for z, v in d.items()})
+    joined = pd.concat([res.rename("n"), hh.rename("hh")], axis=1).fillna(0)
+    assert joined["n"].rank().corr(joined["hh"].rank()) >= 0.5
+
+
+def test_older_zones_have_older_patients():
+    import pandas as pd
+    d = _demo()
+    df = generate_history(30, end=_END, seed=5, demographics=d)
+    share = pd.Series({z: (v["pop_60_74"] + v["pop_75_plus"]) / max(1, sum(v[k] for k in v if k != "households"))
+                       for z, v in d.items()})
+    top, bottom = share[share >= share.quantile(0.75)].index, share[share <= share.quantile(0.25)].index
+    older = df.patient_age_group.isin(["senior", "elderly"])
+    assert older[df.zone_id.isin(top)].mean() >= 1.5 * older[df.zone_id.isin(bottom)].mean()
+
+
+def test_elderly_have_more_cardiac_stroke_respiratory():
+    df = generate_history(30, end=_END, seed=5, demographics=_demo())
+    med = df.incident_type.isin(["cardiac", "stroke", "respiratory"])
+    assert med[df.patient_age_group == "elderly"].mean() > med[df.patient_age_group == "adult"].mean() + 0.15

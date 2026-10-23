@@ -86,6 +86,68 @@ def _type_probs(hours: np.ndarray, traffic: np.ndarray) -> np.ndarray:
     return p
 
 
+# ---------------------------------------------------------------- residential (demographic) demand
+AGE_GROUPS = ("child", "adult", "senior", "elderly")  # 0-14, 15-59, 60-74, 75+
+_AGE_POP_KEY = {"child": "pop_0_14", "adult": "pop_15_59", "senior": "pop_60_74", "elderly": "pop_75_plus"}
+# relative emergency-call rate per resident (older people need an ambulance far more often)
+_AGE_RATE = {"child": 0.04, "adult": 0.08, "senior": 0.30, "elderly": 0.65}
+# incident-type mix per age group, in TYPES order: cardiac, trauma, stroke, respiratory, maternity, burns, poisoning, other
+_AGE_TYPE_P = {
+    "child": [0.02, 0.30, 0.00, 0.28, 0.00, 0.08, 0.12, 0.20],
+    "adult": [0.12, 0.28, 0.05, 0.10, 0.14, 0.05, 0.06, 0.20],
+    "senior": [0.28, 0.16, 0.16, 0.18, 0.00, 0.02, 0.02, 0.18],
+    "elderly": [0.30, 0.20, 0.18, 0.18, 0.00, 0.01, 0.01, 0.12],   # falls show up as trauma
+}
+# age mix of the traffic / hotspot component (mostly working-age road users)
+_HOTSPOT_AGE_P = [0.08, 0.75, 0.12, 0.05]
+
+
+def age_hour_profile(group: str) -> np.ndarray:
+    """Relative demand per local hour for an age group (mean 1)."""
+    h = np.arange(24, dtype=float)
+    if group == "child":
+        p = 0.3 + 1.0 * _gauss(h, 9, 2) + 1.2 * _gauss(h, 18.5, 2.5)
+    elif group == "adult":
+        p = 0.4 + 0.9 * _gauss(h, 9, 2) + 0.8 * _gauss(h, 14, 3) + 1.0 * _gauss(h, 20, 2.5)
+    else:  # seniors: early-morning cardiac peak, evening peak, some night calls
+        p = 0.45 + 1.4 * _gauss(h, 7, 1.8) + 1.0 * _gauss(h, 21, 2.2) + 0.3 * _gauss(h, 3, 2)
+    return p / p.mean()
+
+
+def _residential(rng: np.random.Generator, demographics: dict[str, dict], hours_utc, hod: np.ndarray,
+                 wd: np.ndarray, day_factor: np.ndarray, target_total: float) -> pd.DataFrame:
+    """Incidents from where people live: rate = residents per age group x age rate x age hour profile."""
+    from .config import get_settings
+    from .geo import zone_center
+    zones = sorted(demographics)
+    pop = np.array([[demographics[z].get(_AGE_POP_KEY[g], 0) for g in AGE_GROUPS] for z in zones], dtype=float)
+    rate = np.array([_AGE_RATE[g] for g in AGE_GROUPS])
+    prof = np.stack([age_hour_profile(g)[hod] for g in AGE_GROUPS], axis=1)       # (hours, groups)
+    weekend = np.where(wd >= 5, 1.05, 1.0) * day_factor                          # (hours,)
+    lam_g = (pop * rate)[None, :, :] * prof[:, None, :] * weekend[:, None, None]   # (hours, zones, groups)
+    total = lam_g.sum()
+    if total <= 0:
+        return pd.DataFrame()
+    lam_g *= target_total / total
+    counts = rng.poisson(lam_g)
+    h_idx, z_idx, g_idx = np.nonzero(counts)
+    reps = counts[h_idx, z_idx, g_idx]
+    h_rep, z_rep, g_rep = np.repeat(h_idx, reps), np.repeat(z_idx, reps), np.repeat(g_idx, reps)
+    n = len(h_rep)
+    cell = get_settings().zone_cell_deg
+    centers = np.array([zone_center(z) for z in zones])
+    lat = centers[z_rep, 0] + rng.uniform(-cell / 2, cell / 2, n) * 0.98
+    lng = centers[z_rep, 1] + rng.uniform(-cell / 2, cell / 2, n) * 0.98
+    ts = hours_utc[h_rep] + pd.to_timedelta(rng.integers(0, 3600, n), unit="s")
+    t_idx = np.empty(n, dtype=int)
+    for gi, g in enumerate(AGE_GROUPS):
+        m = g_rep == gi
+        probs = np.array(_AGE_TYPE_P[g]) / sum(_AGE_TYPE_P[g])
+        t_idx[m] = rng.choice(len(TYPES), size=int(m.sum()), p=probs)
+    return pd.DataFrame({"ts": ts, "lat": lat, "lng": lng, "_t": t_idx, "_age": np.array(AGE_GROUPS)[g_rep],
+                         "_h": h_rep})
+
+
 # severity distribution per type (1..5)
 _SEV_P = {
     "cardiac": [0.02, 0.08, 0.25, 0.35, 0.30], "trauma": [0.05, 0.20, 0.35, 0.25, 0.15],
@@ -96,8 +158,15 @@ _SEV_P = {
 
 
 def generate_history(days: int = 90, end: datetime | None = None, seed: int = 42,
-                     rate_scale: float = 1.0) -> pd.DataFrame:
-    """Return a DataFrame [ts(UTC), lat, lng, zone_id, incident_type, severity, traffic_index], sorted by ts."""
+                     rate_scale: float = 1.0, demographics: dict[str, dict] | None = None,
+                     residential_share: float = 0.6) -> pd.DataFrame:
+    """Return a DataFrame [ts(UTC), lat, lng, zone_id, incident_type, severity, traffic_index, patient_age_group],
+    sorted by ts.
+
+    Without `demographics` only the hotspot / traffic component is generated (age "unknown"), exactly as before.
+    With `demographics` ({zone_id: {households, pop_0_14, pop_15_59, pop_60_74, pop_75_plus}}) the same expected
+    volume is split: a residential component makes up `residential_share` of it, driven by how many people of each
+    age group live in each zone; every incident then carries a patient age group."""
     rng = np.random.default_rng(seed)
     end = (end or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
     n_hours = days * 24
@@ -116,6 +185,9 @@ def generate_history(days: int = 90, end: datetime | None = None, seed: int = 42
         prof = hour_profile(kind)[hod]
         wk = np.where(wd >= 5, 0.75 if kind in ("arterial", "commercial") else 1.2, 1.0)
         lam[:, k] = base * w * prof * wk * dow * day_factor * (0.8 + 0.6 * traffic)
+    full_total = lam.sum()
+    if demographics:  # same overall volume, split between traffic hotspots and where people live
+        lam = lam * (1 - residential_share)
     counts = rng.poisson(lam)
     h_idx, k_idx = np.nonzero(counts)
     reps = counts[h_idx, k_idx]
@@ -138,8 +210,29 @@ def generate_history(days: int = 90, end: datetime | None = None, seed: int = 42
         sev[m] = rng.choice([1, 2, 3, 4, 5], size=int(m.sum()), p=_SEV_P[t])
     zones = [zone_of(a, b) for a, b in zip(lat, lng)]
     df = pd.DataFrame({"ts": ts, "lat": lat, "lng": lng, "zone_id": zones,
-                       "incident_type": np.array(TYPES)[t_idx], "severity": sev, "traffic_index": tr.round(3)})
-    return df.sort_values("ts").reset_index(drop=True)
+                       "incident_type": np.array(TYPES)[t_idx], "severity": sev, "traffic_index": tr.round(3),
+                       "patient_age_group": "unknown"})
+    if not demographics:
+        return df.sort_values("ts").reset_index(drop=True)
+
+    # separate stream so the hotspot component above stays identical with or without demographics
+    rng2 = np.random.default_rng(seed + 7919)
+    df["patient_age_group"] = rng2.choice(AGE_GROUPS, size=len(df), p=_HOTSPOT_AGE_P)
+    target = full_total * residential_share
+    res = _residential(rng2, demographics, hours_utc, hod, wd, day_factor, target)
+    if not res.empty:
+        types = res["_t"].to_numpy()
+        sev_r = np.empty(len(res), dtype=int)
+        for i, t in enumerate(TYPES):
+            m = types == i
+            sev_r[m] = rng2.choice([1, 2, 3, 4, 5], size=int(m.sum()), p=_SEV_P[t])
+        res_df = pd.DataFrame({
+            "ts": res["ts"], "lat": res["lat"], "lng": res["lng"],
+            "zone_id": [zone_of(a, b) for a, b in zip(res["lat"], res["lng"])],
+            "incident_type": np.array(TYPES)[types], "severity": sev_r,
+            "traffic_index": traffic[res["_h"].to_numpy()].round(3), "patient_age_group": res["_age"]})
+        df = pd.concat([df, res_df], ignore_index=True)
+    return df.sort_values("ts", kind="mergesort").reset_index(drop=True)
 
 
 def to_rows(df: pd.DataFrame, source: str = "synthetic") -> list[dict]:
@@ -148,5 +241,6 @@ def to_rows(df: pd.DataFrame, source: str = "synthetic") -> list[dict]:
     for r in df.itertuples(index=False):
         out.append({"ts": r.ts.to_pydatetime(), "lat": float(r.lat), "lng": float(r.lng), "zone_id": r.zone_id,
                     "incident_type": r.incident_type, "severity": int(r.severity),
-                    "traffic_index": float(r.traffic_index), "response_time_seconds": None, "source": source})
+                    "traffic_index": float(r.traffic_index), "response_time_seconds": None, "source": source,
+                    "patient_age_group": getattr(r, "patient_age_group", "unknown")})
     return out

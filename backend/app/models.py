@@ -310,6 +310,7 @@ class IncidentHistory(Base):
     traffic_index: Mapped[float] = mapped_column(Float, default=0.5)  # 0 free .. 1 gridlock
     response_time_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(12), default="synthetic")  # synthetic | live
+    patient_age_group: Mapped[str] = mapped_column(String(10), default="unknown")  # child|adult|senior|elderly|unknown
 
 
 class ZoneRisk(Base):

@@ -72,8 +72,8 @@ def generate_chennai_demographics(seed: int = 11) -> list[dict]:
                              * rng.uniform(0.8, 1.2) + rng.uniform(-600, 600))
             households = max(400, households)
             persons = households * rng.uniform(3.6, 4.2)
-            senior = min(0.22, max(0.06, 0.105 + 0.045 * min(old, 1.2) - 0.02 * min(comm, 1.2)
-                                   - 0.02 * min(young, 1.2) - 0.015 * (1 - core) + rng.gauss(0, 0.008)))
+            senior = min(0.22, max(0.05, 0.115 + 0.08 * min(old, 1.2) - 0.025 * min(comm, 1.2)
+                                   - 0.035 * min(young, 1.2) - 0.04 * (1 - core) + rng.gauss(0, 0.008)))
             child = min(0.30, max(0.12, 0.20 + 0.03 * (1 - core) + 0.02 * min(young, 1.2) - 0.025 * min(old, 1.2)
                                   + rng.gauss(0, 0.01)))
             elderly_frac = rng.uniform(0.22, 0.30)                   # share of seniors aged 75+
