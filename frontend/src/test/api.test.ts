@@ -65,7 +65,7 @@ describe('api client', () => {
 
 describe('websocket url', () => {
   it('uses ws/wss and comma separated topics', () => {
-    const u = buildWsUrl(['request:12', 'controller'], 'tok', { protocol: 'https:', host: 'h.example' });
-    expect(u).toBe('wss://h.example/api/ws?token=tok&topics=request%3A12%2Ccontroller');
+    const u = buildWsUrl(['request:12', 'controller'], 'tkt', { protocol: 'https:', host: 'h.example' });
+    expect(u).toBe('wss://h.example/api/ws?ticket=tkt&topics=request%3A12%2Ccontroller');
   });
 });

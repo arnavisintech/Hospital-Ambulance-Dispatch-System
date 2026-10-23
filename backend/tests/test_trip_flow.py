@@ -6,7 +6,7 @@ from app.db import SessionLocal
 from app.models import (Ambulance, AmbulanceLocation, AmbulanceStatus, AuditLog, Hospital, Role, TripRecord)
 from app.services import analytics, billing, capacity, trips
 from app.audit import verify_chain
-from conftest import PATIENT, sos
+from conftest import PATIENT, sos, ws_url
 
 
 @pytest.fixture
@@ -210,19 +210,19 @@ def world_admin(client):
 def test_websocket_authorisation(client, world, scene):
     rid = sos(client, scene["user"]["h"]).json()["id"]
     other = world.user()
-    with client.websocket_connect(f"/api/ws?token={scene['user']['token']}&topics=request:{rid}") as ws:
+    with client.websocket_connect(ws_url(client, scene['user'], f"request:{rid}")) as ws:
         assert ws.receive_json()["data"]["topics"] == [f"request:{rid}"]
         ws.send_text("ping")
         assert ws.receive_json()["type"] == "pong"
-    with client.websocket_connect(f"/api/ws?token={scene['ctl']['token']}&topics=controller,crew:{scene['amb']},hospital:{scene['h']}") as ws:
+    with client.websocket_connect(ws_url(client, scene['ctl'], f"controller,crew:{scene['amb']},hospital:{scene['h']}")) as ws:
         assert ws.receive_json()["type"] == "subscribed"
-    with client.websocket_connect(f"/api/ws?token={scene['crew']['token']}&topics=crew:{scene['amb']},request:{rid}") as ws:
+    with client.websocket_connect(ws_url(client, scene['crew'], f"crew:{scene['amb']},request:{rid}")) as ws:
         assert ws.receive_json()["type"] == "subscribed"
-    with client.websocket_connect(f"/api/ws?token={scene['staff']['token']}&topics=hospital:{scene['h']}") as ws:
+    with client.websocket_connect(ws_url(client, scene['staff'], f"hospital:{scene['h']}")) as ws:
         assert ws.receive_json()["type"] == "subscribed"
-    for tok, topics in [(other["token"], f"request:{rid}"), (scene["user"]["token"], "controller"),
-                        (scene["crew"]["token"], "crew:999"), (scene["staff"]["token"], "hospital:999"),
-                        ("garbage", "controller")]:
+    for who, topics in [(other, f"request:{rid}"), (scene["user"], "controller"),
+                        (scene["crew"], "crew:999"), (scene["staff"], "hospital:999"), (None, "controller")]:
+        url = ws_url(client, who, topics) if who else f"/api/ws?ticket=garbage&topics={topics}"
         with pytest.raises(WebSocketDisconnect):
-            with client.websocket_connect(f"/api/ws?token={tok}&topics={topics}") as ws:
+            with client.websocket_connect(url) as ws:
                 ws.receive_json()

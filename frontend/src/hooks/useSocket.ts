@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { getToken } from '../lib/api';
+import { getToken, post } from '../lib/api';
 import { backoffMs } from '../lib/queue';
 import type { WsMessage } from '../lib/types';
 
-export function buildWsUrl(topics: string[], token: string, loc: Pick<Location, 'protocol' | 'host'> = window.location): string {
+/** `ticket` is a single-use, 30 s ticket from POST /auth/ws-ticket (the JWT never goes in a URL). */
+export function buildWsUrl(topics: string[], ticket: string, loc: Pick<Location, 'protocol' | 'host'> = window.location): string {
   const proto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
-  const qs = new URLSearchParams({ token, topics: topics.join(',') });
+  const qs = new URLSearchParams({ ticket, topics: topics.join(',') });
   return `${proto}//${loc.host}/api/ws?${qs.toString()}`;
 }
 
@@ -26,11 +27,12 @@ export function useSocket(topics: string[], onMessage: (m: WsMessage) => void, e
     let attempt = 0;
     let closed = false;
 
-    const connect = () => {
-      const token = getToken();
-      if (!token || closed) return;
+    const connect = async () => {
+      if (!getToken() || closed) return;
       try {
-        ws = new WebSocket(buildWsUrl(key.split(','), token));
+        const { ticket } = await post<{ ticket: string }>('/auth/ws-ticket');
+        if (closed) return;
+        ws = new WebSocket(buildWsUrl(key.split(','), ticket));
       } catch {
         schedule();
         return;
@@ -43,10 +45,10 @@ export function useSocket(topics: string[], onMessage: (m: WsMessage) => void, e
       ws.onerror = () => { ws?.close(); };
     };
     const schedule = () => {
-      timer = setTimeout(connect, backoffMs(attempt++, 1000, 15000));
+      timer = setTimeout(() => void connect(), backoffMs(attempt++, 1000, 15000));
     };
 
-    connect();
+    void connect();
     return () => {
       closed = true;
       if (timer) clearTimeout(timer);

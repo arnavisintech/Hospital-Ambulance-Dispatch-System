@@ -1,4 +1,4 @@
-"""Real-time channel: GET ws://host/api/ws?token=<jwt>&topics=request:12,controller,crew:3,hospital:2
+"""Real-time channel: GET ws://host/api/ws?ticket=<POST /api/auth/ws-ticket>&topics=request:12,controller,crew:3,hospital:2
 
 Anonymous family view (v2 section 4): GET ws://host/api/ws?share=<share token> subscribes to that request's topic
 only (topics may be omitted or must equal request:{id})."""
@@ -8,10 +8,10 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from .. import db as dbmod
-from ..deps import user_from_token
 from ..events import hub
 from ..models import EmergencyRequest, Role, User
 from ..services import sharing, trips
+from .auth import consume_ticket
 
 router = APIRouter(tags=["realtime"])
 
@@ -36,11 +36,11 @@ def _msg(type_: str, data: dict) -> str:
 
 
 @router.websocket("/api/ws")
-async def ws_endpoint(ws: WebSocket, token: str = "", topics: str = "", share: str = ""):
+async def ws_endpoint(ws: WebSocket, ticket: str = "", topics: str = "", share: str = ""):
     wanted = [t.strip() for t in topics.split(",") if t.strip()]
     payload_filter = None
     with dbmod.SessionLocal() as db:
-        if share and not token:
+        if share and not ticket:
             req = sharing.resolve(db, share)
             if req is None:
                 await ws.close(code=4404, reason="share link not found or expired")
@@ -50,10 +50,9 @@ async def ws_endpoint(ws: WebSocket, token: str = "", topics: str = "", share: s
             denied = [t for t in wanted if t != topic]
             wanted = [topic]
         else:
-            try:
-                user = user_from_token(db, token)
-            except Exception:
-                await ws.close(code=4401, reason="invalid token")
+            user = consume_ticket(db, ticket) if ticket else None
+            if user is None:
+                await ws.close(code=4401, reason="invalid or expired ticket")
                 return
             denied = [t for t in wanted if not _allowed(db, user, t)]
     if denied:

@@ -129,3 +129,9 @@ def sos(client, headers, **over):
 def db_get(model, pk):
     with SessionLocal() as db:
         return db.get(model, pk)
+
+
+def ws_url(client, user, topics: str) -> str:
+    """Websocket URL with a fresh single-use ticket for `user` (a World.user dict)."""
+    t = client.post("/api/auth/ws-ticket", headers=user["h"]).json()["ticket"]
+    return f"/api/ws?ticket={t}&topics={topics}"

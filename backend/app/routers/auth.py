@@ -1,6 +1,8 @@
 """Authentication (STRQ2). Passwords are hashed with bcrypt and never logged or audited."""
 import re
 import secrets
+import threading
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
@@ -163,3 +165,38 @@ def change_password(body: PasswordChangeIn, user: User = Depends(current_user), 
     audit.log(db, "auth.password_change", "user", user.id, user.id, {})
     db.commit()
     return _token_response(db, user)
+
+
+# ---------------------------------------------------------------- websocket tickets
+# Browsers cannot set headers on a WebSocket, so the socket authenticates with a 30 s single-use ticket instead of
+# putting the long-lived JWT in the URL (where it would land in proxy logs and browser history).
+TICKET_TTL_S = 30
+_tickets: dict[str, tuple[int, int, float]] = {}  # ticket -> (user_id, token_version, expires_at)
+_tickets_lock = threading.Lock()
+
+
+def _now() -> float:
+    return time.monotonic()
+
+
+@router.post("/ws-ticket")
+def ws_ticket(user: User = Depends(current_user)):
+    t = secrets.token_urlsafe(24)
+    now = _now()
+    with _tickets_lock:
+        for k in [k for k, v in _tickets.items() if v[2] <= now]:
+            del _tickets[k]
+        _tickets[t] = (user.id, user.token_version or 0, now + TICKET_TTL_S)
+    return {"ticket": t, "expires_in": TICKET_TTL_S}
+
+
+def consume_ticket(db: Session, ticket: str) -> User | None:
+    """Single use: the ticket is removed whether or not it is still valid. None = reject."""
+    with _tickets_lock:
+        entry = _tickets.pop(ticket, None)
+    if entry is None or entry[2] <= _now():
+        return None
+    u = db.get(User, entry[0])
+    if u is None or not u.is_active or (u.token_version or 0) != entry[1]:
+        return None
+    return u
