@@ -5,10 +5,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    app_env: str = "development"  # development | production (production refuses unsafe settings)
     database_url: str = "sqlite:///./hads.db"
     jwt_secret: str = "change-me-in-production"
     jwt_expire_minutes: int = 720
     cors_origins: str = "*"  # comma separated
+    data_encryption_key: str = ""  # Fernet key(s), comma separated; first encrypts (NFR3)
 
     # Pilot city (Chennai) -- map centre and prediction grid
     city_lat: float = 13.0827
@@ -44,8 +46,28 @@ class Settings(BaseSettings):
     demo_speedup: float = 4.0
     autopilot_device_grace_s: int = 60  # a crew device that pinged within this window always wins
 
-    seed_on_startup: bool = True
+    seed_on_startup: bool = False  # demo data with known passwords: never in production
     audit_retention_years: int = 5  # NFR7 (informational; rows are never deleted)
+
+    def production_problems(self) -> list[str]:
+        """Settings that make a production boot unsafe. Empty outside production."""
+        if self.app_env.lower() != "production":
+            return []
+        problems = []
+        if self.jwt_secret in _DEFAULT_SECRETS or len(self.jwt_secret) < 32:
+            problems.append("JWT_SECRET must be a random value of at least 32 characters")
+        if any(o.strip() == "*" for o in self.cors_origins.split(",")):
+            problems.append("CORS_ORIGINS must list explicit origins, not '*'")
+        if self.seed_on_startup:
+            problems.append("SEED_ON_STARTUP must be false (demo accounts use a published password)")
+        if self.demo_autopilot:
+            problems.append("DEMO_AUTOPILOT must be false (it drives simulated ambulances)")
+        if not self.data_encryption_key.strip():
+            problems.append("DATA_ENCRYPTION_KEY must be set (patient data is encrypted at rest)")
+        return problems
+
+
+_DEFAULT_SECRETS = {"change-me-in-production", "change-me", "dev-secret-change-me"}
 
 
 @lru_cache

@@ -23,9 +23,12 @@ ROUTER_MODULES = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    s = get_settings()
+    problems = s.production_problems()
+    if problems:
+        raise RuntimeError("Refusing to start in production: " + "; ".join(problems))
     hub.bind_loop(asyncio.get_running_loop())
     Base.metadata.create_all(engine)
-    s = get_settings()
     if s.seed_on_startup:
         try:
             from .seed import seed_if_empty
