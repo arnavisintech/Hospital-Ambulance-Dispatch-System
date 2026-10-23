@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   allowedClaimTransitions, canTransitionClaim, changedSettings, claimSteps, csvEscape, fmtDurShort, fmtMs, fmtPercent,
-  isClaimPending, isClaimTerminal, parseFleetText, rangeLabel, rangeToDays, settingDef, toCsv, validateSetting, MAX_BULK,
+  isClaimPending, isClaimTerminal, parseFleetText, partnerStatus, rangeLabel, rangeToDays, settingDef, toCsv, validateSetting, MAX_BULK,
 } from '../pages/admin/shared/logic';
 
 describe('range → days', () => {
@@ -164,5 +164,13 @@ describe('rupees and chart ticks', () => {
     const t = minuteTicks(5000);
     expect(t.length).toBeLessThanOrEqual(7);
     expect(t[t.length - 1]).toBeGreaterThanOrEqual(5000);
+  });
+});
+
+describe('partnerStatus', () => {
+  it('labels verified and pending partners', () => {
+    expect(partnerStatus({ partner_verified: true })).toEqual({ label: 'Verified', tone: 'success', verified: true });
+    expect(partnerStatus({ partner_verified: false })).toEqual({ label: 'Pending verification', tone: 'warning', verified: false });
+    expect(partnerStatus({})).toEqual({ label: 'Pending verification', tone: 'warning', verified: false });
   });
 });

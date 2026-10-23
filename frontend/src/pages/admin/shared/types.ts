@@ -59,6 +59,7 @@ export interface AdminHospital {
   /** Backend: {"cardiology": 3, ...}; older servers may send a list or string. */
   specialists?: Record<string, number> | string[] | string | null;
   revenue_share_pct?: number | null; partner_verified?: boolean; stations?: number | null; is_active?: boolean;
+  registration_number?: string | null; verified_at?: string | null;
 }
 
 export interface AdminStation {

@@ -14,7 +14,7 @@ import { cn } from '../../lib/cn';
 import { fmtNumber } from '../../lib/format';
 import { humanize } from '../../lib/status';
 import type { AmbulanceBrief, LatLng } from '../../lib/types';
-import { MAX_BULK, parseFleetText, type CsvColumn } from './shared/logic';
+import { MAX_BULK, parseFleetText, partnerStatus, type CsvColumn } from './shared/logic';
 import { PlacePicker } from './shared/PlacePicker';
 import type { AdminHospital, AdminStation } from './shared/types';
 import { ExportButton } from './shared/widgets';
@@ -120,7 +120,7 @@ function HospitalStep({ hospitals, onDone }: { hospitals: AdminHospital[]; onDon
   const { success, error } = useToast();
   const [mode, setMode] = useState<'new' | 'existing'>('new');
   const [existing, setExisting] = useState('');
-  const [f, setF] = useState({ name: '', address: '', beds: '', icu: '', share: '' });
+  const [f, setF] = useState({ name: '', reg: '', address: '', beds: '', icu: '', share: '' });
   const [addrTouched, setAddrTouched] = useState(false);
   const [pos, setPos] = useState<LatLng | null>(null);
   const [spec, setSpec] = useState<[string, number][]>([]);
@@ -128,6 +128,7 @@ function HospitalStep({ hospitals, onDone }: { hospitals: AdminHospital[]; onDon
   const [busy, setBusy] = useState(false);
   const errs: Record<string, string | undefined> = {
     name: f.name.trim().length < 2 ? 'Enter the hospital name' : hospitals.some((h) => h.name.toLowerCase() === f.name.trim().toLowerCase()) ? 'A hospital with this name already exists' : undefined,
+    reg: f.reg.trim().length < 4 ? 'Enter the clinical establishment registration number' : undefined,
     beds: !intIn(f.beds, 0, 100000) ? 'Enter total beds (whole number)' : undefined,
     icu: !intIn(f.icu, 0, 100000) ? 'Enter total ICU beds (whole number)' : intIn(f.beds, 0, 100000) && Number(f.icu) > Number(f.beds) ? 'ICU beds cannot exceed total beds' : undefined,
     share: f.share.trim() && !(Number(f.share) >= 0 && Number(f.share) <= 100) ? 'Between 0 and 100' : undefined,
@@ -147,12 +148,12 @@ function HospitalStep({ hospitals, onDone }: { hospitals: AdminHospital[]; onDon
     setBusy(true);
     try {
       const h = await post<AdminHospital>('/admin/hospitals', {
-        name: f.name.trim(), address: f.address.trim(), lat: pos[0], lng: pos[1], total_beds: Number(f.beds), total_icu: Number(f.icu),
+        name: f.name.trim(), registration_number: f.reg.trim(), address: f.address.trim(), lat: pos[0], lng: pos[1], total_beds: Number(f.beds), total_icu: Number(f.icu),
         specialists: spec.length ? Object.fromEntries(spec) : undefined,
         revenue_share_pct: f.share.trim() ? Number(f.share) : undefined,
       });
       const name = h?.name ?? f.name.trim();
-      success(`${name} is now a partner hospital.`, { title: 'Hospital created' });
+      success(`${name} was added and is pending verification. It receives patients once verified under Hospitals.`, { title: 'Hospital created' });
       onDone({ id: h.id, name, isNew: true, pos });
     } catch (e2) { error(e2, { title: "Couldn't create hospital" }); } finally { setBusy(false); }
   };
@@ -168,6 +169,8 @@ function HospitalStep({ hospitals, onDone }: { hospitals: AdminHospital[]; onDon
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="space-y-4">
             <Input label="Hospital name" required value={f.name} onChange={set('name')} error={e('name')} placeholder="e.g. Apollo Hospitals, Greams Road" data-autofocus />
+            <Input label="Registration number" required value={f.reg} onChange={set('reg')} error={e('reg')} placeholder="Clinical establishment registration"
+              helper="Checked before the hospital is verified as a partner" />
             <Textarea label="Address" rows={2} value={f.address} onChange={(ev) => { setAddrTouched(true); set('address')(ev); }} helper="Filled from the map pin — edit if needed" maxLength={255} />
             <div className="grid grid-cols-2 gap-4">
               <Input label="Total beds" required inputMode="numeric" value={f.beds} onChange={set('beds')} error={e('beds')} className="tabular-nums" />
@@ -364,9 +367,21 @@ const HOSP_CSV: CsvColumn<AdminHospital>[] = [
   { header: 'Total beds', value: (h) => h.total_beds }, { header: 'Total ICU', value: (h) => h.total_icu },
   { header: 'Specialists', value: (h) => specialistEntries(h.specialists).map(([k, n]) => `${k}:${n}`).join(' ') },
   { header: 'Revenue share %', value: (h) => h.revenue_share_pct }, { header: 'Stations', value: (h) => h.stations },
+  { header: 'Registration', value: (h) => h.registration_number }, { header: 'Status', value: (h) => partnerStatus(h).label },
 ];
 
-function HospitalsTable({ data, loading }: { data: AdminHospital[]; loading: boolean }) {
+function HospitalsTable({ data, loading, onChanged }: { data: AdminHospital[]; loading: boolean; onChanged: (h: AdminHospital) => void }) {
+  const { success, error } = useToast();
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const toggle = async (h: AdminHospital) => {
+    const verify = !partnerStatus(h).verified;
+    setBusyId(h.id);
+    try {
+      const out = await post<AdminHospital>(`/admin/hospitals/${h.id}/${verify ? 'verify' : 'suspend'}`);
+      onChanged(out);
+      success(verify ? `${h.name} is now a verified partner.` : `${h.name} is suspended and will not receive patients.`);
+    } catch (e) { error(e, { title: "Couldn't update partner status" }); } finally { setBusyId(null); }
+  };
   const cols: Column<AdminHospital>[] = [
     { key: 'name', header: 'Hospital', sortable: true, cell: (h) => (
       <div className="min-w-0">
@@ -382,6 +397,16 @@ function HospitalsTable({ data, loading }: { data: AdminHospital[]; loading: boo
     } },
     { key: 'revenue_share_pct', header: 'Share', sortable: true, align: 'right', hideBelow: 'lg', cell: (h) => (h.revenue_share_pct !== null && h.revenue_share_pct !== undefined ? `${h.revenue_share_pct}%` : '--') },
     { key: 'stations', header: 'Stations', sortable: true, align: 'right', hideBelow: 'lg' },
+    { key: 'partner_verified', header: 'Status', sortable: true, accessor: (h) => partnerStatus(h).label, cell: (h) => {
+      const st = partnerStatus(h);
+      return (
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={st.tone}>{st.label}</Badge>
+          <Button size="sm" variant={st.verified ? 'ghost' : 'secondary'} loading={busyId === h.id} onClick={() => void toggle(h)}
+            aria-label={`${st.verified ? 'Suspend' : 'Verify'} ${h.name}`}>{st.verified ? 'Suspend' : 'Verify'}</Button>
+        </div>
+      );
+    } },
   ];
   return (
     <DataTable caption="Partner hospitals" data={data} columns={cols} rowKey={(h) => h.id} loading={loading} searchable searchPlaceholder="Search hospitals"
@@ -499,7 +524,8 @@ export default function Onboarding() {
             </AnimatePresence>
           </Card>
         ) : view === 'hospitals' ? (
-          <HospitalsTable data={hospitals.data ?? []} loading={hospitals.loading} />
+          <HospitalsTable data={hospitals.data ?? []} loading={hospitals.loading}
+            onChanged={(h) => hospitals.setData((xs) => xs?.map((x) => (x.id === h.id ? { ...x, ...h } : x)) ?? xs)} />
         ) : view === 'stations' ? (
           <StationsTable data={stations.data ?? []} loading={stations.loading}
             onToggled={(s) => stations.setData((xs) => xs?.map((x) => (x.id === s.id ? s : x)) ?? xs)} />

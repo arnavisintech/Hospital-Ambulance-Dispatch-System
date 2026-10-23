@@ -41,7 +41,10 @@ def _own_staff(db: Session, user: User, hospital_id: int, allow_admin: bool = Fa
 
 @router.get("")
 def list_hospitals(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return [capacity.hospital_out(h) for h in db.execute(select(Hospital).order_by(Hospital.id)).scalars()]
+    q = select(Hospital).order_by(Hospital.id)
+    if user.role != Role.admin:
+        q = q.where(Hospital.partner_verified.is_(True))  # pending / suspended partners are admin-only
+    return [capacity.hospital_out(h) for h in db.execute(q).scalars()]
 
 
 @router.get("/{hospital_id}")
@@ -54,6 +57,8 @@ def update_capacity(hospital_id: int, body: CapacityIn, user: User = Depends(req
                     db: Session = Depends(get_db)):
     _own_staff(db, user, hospital_id, allow_admin=True)
     h = _hospital(db, hospital_id)
+    if not h.partner_verified and user.role != Role.admin:
+        raise HTTPException(403, "This hospital is not a verified partner yet")
     if body.available_beds > h.total_beds or body.available_icu > h.total_icu:
         raise HTTPException(422, "Available counts cannot exceed total capacity")
     before = {"available_beds": h.available_beds, "available_icu": h.available_icu}

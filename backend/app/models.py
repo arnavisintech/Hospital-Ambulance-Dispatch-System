@@ -121,7 +121,10 @@ class Hospital(Base):
     address: Mapped[str] = mapped_column(String(255), default="")
     lat: Mapped[float] = mapped_column(Float)
     lng: Mapped[float] = mapped_column(Float)
-    partner_verified: Mapped[bool] = mapped_column(Boolean, default=True)  # STRQ2
+    partner_verified: Mapped[bool] = mapped_column(Boolean, default=True)  # STRQ2 (onboarding starts it False)
+    registration_number: Mapped[str | None] = mapped_column(String(40), unique=True, nullable=True)  # clinical est. reg.
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verified_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     total_beds: Mapped[int] = mapped_column(Integer, default=0)
     available_beds: Mapped[int] = mapped_column(Integer, default=0)
     total_icu: Mapped[int] = mapped_column(Integer, default=0)

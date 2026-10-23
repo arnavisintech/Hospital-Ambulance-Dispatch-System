@@ -22,13 +22,17 @@ def create_hospital(db: Session, data: dict) -> Hospital:
     name = data["name"].strip()
     if db.scalar(select(Hospital.id).where(func.lower(Hospital.name) == name.lower())):
         raise HTTPException(409, "A hospital with this name already exists")
+    reg = data["registration_number"].strip().upper()
+    if db.scalar(select(Hospital.id).where(Hospital.registration_number == reg)):
+        raise HTTPException(409, "A hospital with this registration number already exists")
     pct = data.get("revenue_share_pct")
     if pct is None:
         pct = get_platform_settings(db)["revenue_share_pct"]
     h = Hospital(name=name, address=data.get("address", "") or "", lat=data["lat"], lng=data["lng"],
                  total_beds=data["total_beds"], available_beds=data["total_beds"], total_icu=data["total_icu"],
                  available_icu=data["total_icu"], specialists=data.get("specialists") or {},
-                 capacity_updated_at=utcnow(), revenue_share_pct=float(pct), partner_verified=True)
+                 capacity_updated_at=utcnow(), revenue_share_pct=float(pct), registration_number=reg,
+                 partner_verified=False)  # STRQ2: routed to only after an admin verifies the partner
     db.add(h)
     db.flush()
     return h
@@ -137,7 +141,8 @@ def hospital_out(h: Hospital, n_stations: int | None = None) -> dict:
             "total_beds": h.total_beds, "available_beds": h.available_beds, "total_icu": h.total_icu,
             "available_icu": h.available_icu, "specialists": h.specialists or {},
             "revenue_share_pct": h.revenue_share_pct, "partner_verified": h.partner_verified,
-            "stations": n_stations}
+            "registration_number": h.registration_number,
+            "verified_at": h.verified_at.isoformat() if h.verified_at else None, "stations": n_stations}
 
 
 def station_out(s: DarkStation, hospital_name: str | None = None, ambulances: int = 0, available: int = 0) -> dict:

@@ -311,3 +311,12 @@ export function changedSettings(saved: Record<string, unknown>, draft: Record<st
     return d === '' ? true : Number(d) !== Number(saved[k]);
   });
 }
+
+/* ------------------------------------------------------------------ partner verification (STRQ2) */
+
+/** Unverified partners are never routed to and cannot update capacity until an admin verifies them. */
+export function partnerStatus(h: { partner_verified?: boolean }): { label: string; tone: 'success' | 'warning'; verified: boolean } {
+  return h.partner_verified
+    ? { label: 'Verified', tone: 'success', verified: true }
+    : { label: 'Pending verification', tone: 'warning', verified: false };
+}

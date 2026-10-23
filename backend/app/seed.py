@@ -83,10 +83,11 @@ def seed_if_empty(db: Session, days: int = 90, historical_trips: int = 60, train
     pw = hash_password(DEMO_PASSWORD)  # one hash reused: bcrypt per user would take seconds
 
     hospitals = []
-    for name, addr, lat, lng, beds, icu, spec in HOSPITALS:
+    for n_h, (name, addr, lat, lng, beds, icu, spec) in enumerate(HOSPITALS, 1):
         h = Hospital(name=name, address=addr, lat=lat, lng=lng, total_beds=beds, total_icu=icu,
                      available_beds=int(beds * rng.uniform(0.15, 0.4)), available_icu=max(1, int(icu * rng.uniform(0.1, 0.4))),
-                     specialists=spec, capacity_updated_at=now, revenue_share_pct=70.0, partner_verified=True)
+                     specialists=spec, capacity_updated_at=now, revenue_share_pct=70.0, partner_verified=True,
+                     registration_number=f"CHN-H-{n_h:04d}", verified_at=now)  # synthetic registration ids
         db.add(h)
         hospitals.append(h)
     db.flush()

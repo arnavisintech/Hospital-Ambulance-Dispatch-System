@@ -30,7 +30,7 @@ def test_all_admin_routes_role_guarded(env):
 
 def test_hospital_station_fleet_onboarding(env):
     c, h = env.client, H(env)
-    body = {"name": "Test Care Hospital", "address": "OMR", "lat": 12.95, "lng": 80.24, "total_beds": 50, "total_icu": 8,
+    body = {"name": "Test Care Hospital", "address": "OMR", "registration_number": "TN-TEST-0001", "lat": 12.95, "lng": 80.24, "total_beds": 50, "total_icu": 8,
             "specialists": {"cardiology": 1}, "revenue_share_pct": 65}
     r = c.post("/api/admin/hospitals", json=body, headers=h)
     assert r.status_code == 201

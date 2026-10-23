@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .. import audit
 from ..db import get_db
 from ..deps import require_roles
-from ..models import Ambulance, AmbulanceStatus, DarkStation, Hospital, Role, User
+from ..models import Ambulance, AmbulanceStatus, DarkStation, Hospital, Role, User, utcnow
 from ..security import hash_password
 from ..services import onboarding as ob
 from ..services.billing import get_platform_settings
@@ -20,6 +20,7 @@ _admin = require_roles(Role.admin)
 
 class HospitalIn(BaseModel):
     name: str = Field(min_length=2, max_length=160)
+    registration_number: str = Field(min_length=4, max_length=40)  # clinical establishment registration
     address: str = Field("", max_length=255)
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
@@ -74,6 +75,31 @@ def create_hospital(body: HospitalIn, db: Session = Depends(get_db), user: User 
     audit.log(db, "admin.hospital.create", "hospital", h.id, user.id, {"name": h.name})
     db.commit()
     return ob.hospital_out(h, 0)
+
+
+def _set_verified(db: Session, hospital_id: int, user: User, verified: bool) -> dict:
+    h = db.get(Hospital, hospital_id)
+    if not h:
+        raise HTTPException(404, "Hospital not found")
+    h.partner_verified = verified
+    h.verified_at = utcnow() if verified else None
+    h.verified_by = user.id if verified else None
+    audit.log(db, f"admin.hospital.{'verify' if verified else 'suspend'}", "hospital", h.id, user.id,
+              {"registration_number": h.registration_number})
+    db.commit()
+    n = db.scalar(select(func.count(DarkStation.id)).where(DarkStation.hospital_id == h.id))
+    return ob.hospital_out(h, n)
+
+
+@router.post("/hospitals/{hospital_id}/verify")
+def verify_hospital(hospital_id: int, db: Session = Depends(get_db), user: User = Depends(_admin)):
+    """STRQ2: mark a partner as verified; only verified partners are routed to and may update capacity."""
+    return _set_verified(db, hospital_id, user, True)
+
+
+@router.post("/hospitals/{hospital_id}/suspend")
+def suspend_hospital(hospital_id: int, db: Session = Depends(get_db), user: User = Depends(_admin)):
+    return _set_verified(db, hospital_id, user, False)
 
 
 @router.get("/hospitals")
