@@ -64,7 +64,7 @@ def test_stale_capacity_is_deprioritised_but_usable_as_last_resort(world):
     assert confirm(new_req()) == fresh_far
     # only stale hospital left -> still chosen ("unknown"), but no bed is decremented
     with SessionLocal() as db:
-        db.delete(db.get(Hospital, fresh_far))
+        db.get(Hospital, fresh_far).partner_verified = False  # out of candidacy (it is referenced: no delete)
         db.commit()
     before = hosp(stale_near).available_beds
     assert confirm(new_req()) == stale_near

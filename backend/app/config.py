@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_env: str = "development"  # development | production (production refuses unsafe settings)
-    database_url: str = "sqlite:///./hads.db"
+    database_url: str = "sqlite:///./data/hads.db"  # or postgresql+psycopg2://...
     jwt_secret: str = "change-me-in-production"
     jwt_expire_minutes: int = 720
     cors_origins: str = "*"  # comma separated

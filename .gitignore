@@ -19,3 +19,5 @@ backups/
 infra/**/data/
 
 # Executor scratch
+backend/data/*
+!backend/data/.gitkeep
