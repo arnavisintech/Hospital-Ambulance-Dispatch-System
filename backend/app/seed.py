@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import audit, places
+from . import audit, demographics, places
 from .geo import haversine_km
 from .models import (Ambulance, AmbulanceStatus, ClaimStatus, CrewProfile, DarkStation, EmergencyRequest, Hospital,
                      HospitalStaffProfile, IncidentHistory, IncidentType, PlatformSetting, RequestStatus, Role,
@@ -135,6 +135,9 @@ def seed_if_empty(db: Session, days: int = 90, historical_trips: int = 60, train
 
     for k, (dflt, *_rest) in billing.SETTING_DEFS.items():
         db.add(PlatformSetting(key=k, value={"value": dflt}))
+
+    # residences and age groups per zone (synthetic estimate; replace via the admin CSV import)
+    demographics.replace_demographics(db, demographics.generate_chennai_demographics(), "synthetic")
 
     # 90 days of synthetic history
     df = generate_history(days=days, end=now, seed=SEED)

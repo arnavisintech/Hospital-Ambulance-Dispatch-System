@@ -1,12 +1,12 @@
 import secrets
 from typing import Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, demographics
 from ..db import get_db
 from ..deps import require_roles
 from ..models import Ambulance, AmbulanceStatus, DarkStation, Hospital, Role, User, utcnow
@@ -215,6 +215,35 @@ def reset_password(user_id: int, db: Session = Depends(get_db), admin: User = De
     audit.log(db, "admin.user.reset_password", "user", u.id, admin.id, {})
     db.commit()
     return {"temporary_password": temp}
+
+
+# ------------------------------------------------------------------ demographics (demand model inputs)
+MAX_CSV_BYTES = 5 * 1024 * 1024
+
+
+@router.post("/demographics/import")
+async def import_demographics(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(_admin)):
+    """Replace zone demographics from CSV (lat,lng,households,pop_0_14,pop_15_59,pop_60_74,pop_75_plus).
+    All-or-nothing: any bad row rejects the file and the existing data stays."""
+    raw = await file.read(MAX_CSV_BYTES + 1)
+    if len(raw) > MAX_CSV_BYTES:
+        raise HTTPException(413, "File too large (max 5 MB)")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(422, {"errors": ["row 1: the file must be UTF-8 CSV"]})
+    rows, errors = demographics.parse_demographics_csv(text)
+    if errors:
+        raise HTTPException(422, {"errors": errors[:200]})
+    out = demographics.replace_demographics(db, rows, "import")
+    audit.log(db, "admin.demographics.import", "demographics", None, user.id, out)
+    db.commit()
+    return out
+
+
+@router.get("/demographics/summary")
+def demographics_summary(db: Session = Depends(get_db), _: User = Depends(_admin)):
+    return demographics.summary(db)
 
 
 # ------------------------------------------------------------------ settings

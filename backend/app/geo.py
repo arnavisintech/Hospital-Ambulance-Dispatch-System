@@ -25,3 +25,12 @@ def zone_center(zone_id: str) -> tuple[float, float]:
     s = get_settings()
     row, col = (int(x) for x in zone_id.split("_"))
     return (s.city_lat + (row + 0.5) * s.zone_cell_deg, s.city_lng + (col + 0.5) * s.zone_cell_deg)
+
+
+# Chennai metropolitan area (lat_min, lng_min, lat_max, lng_max): the pilot city boundary for imports and APIs.
+CHENNAI_BBOX = (12.80, 79.98, 13.25, 80.35)
+
+
+def in_city(lat: float, lng: float) -> bool:
+    lat_min, lng_min, lat_max, lng_max = CHENNAI_BBOX
+    return lat_min <= lat <= lat_max and lng_min <= lng <= lng_max

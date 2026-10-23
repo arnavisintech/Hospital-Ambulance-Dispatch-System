@@ -325,6 +325,32 @@ class ZoneRisk(Base):
     model_version: Mapped[str] = mapped_column(String(32), default="v0")
 
 
+class ZoneDemographics(Base):
+    """Residences and age groups per grid zone: the demand model's population features (seniors need more care).
+    source = "synthetic" (built-in Chennai estimate) or "import" (real data loaded from CSV by an admin)."""
+    __tablename__ = "zone_demographics"
+    zone_id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    households: Mapped[int] = mapped_column(Integer, default=0)
+    pop_0_14: Mapped[int] = mapped_column(Integer, default=0)
+    pop_15_59: Mapped[int] = mapped_column(Integer, default=0)
+    pop_60_74: Mapped[int] = mapped_column(Integer, default=0)
+    pop_75_plus: Mapped[int] = mapped_column(Integer, default=0)
+    source: Mapped[str] = mapped_column(String(12), default="synthetic")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    @property
+    def population(self) -> int:
+        return self.pop_0_14 + self.pop_15_59 + self.pop_60_74 + self.pop_75_plus
+
+    @property
+    def seniors(self) -> int:
+        return self.pop_60_74 + self.pop_75_plus
+
+    @property
+    def senior_share(self) -> float:
+        return self.seniors / self.population if self.population else 0.0
+
+
 class ModelMetric(Base):
     """Prediction-accuracy history (FR11 'prediction accuracy')."""
     __tablename__ = "model_metrics"
