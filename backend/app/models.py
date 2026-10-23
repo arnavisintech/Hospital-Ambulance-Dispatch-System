@@ -113,6 +113,8 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     token_version: Mapped[int] = mapped_column(Integer, default=0)  # bump to revoke every issued token
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+    consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # DPDP notice accepted
+    erased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)     # DPDP erasure
 
 
 class Hospital(Base):

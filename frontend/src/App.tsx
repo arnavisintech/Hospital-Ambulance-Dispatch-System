@@ -16,6 +16,7 @@ import Register from './pages/Register';
 const Sos = lazy(() => import('./pages/requester/Sos'));
 const Track = lazy(() => import('./pages/requester/Track'));
 const History = lazy(() => import('./pages/requester/History'));
+const Account = lazy(() => import('./pages/requester/Account'));
 const Crew = lazy(() => import('./pages/crew/Crew'));
 const Controller = lazy(() => import('./pages/controller/Controller'));
 const Hospital = lazy(() => import('./pages/hospital/Hospital'));
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/sos" element={<MobileRoute roles={['requester']}><Sos /></MobileRoute>} />
         <Route path="/track/:id" element={<MobileRoute roles={['requester', 'controller', 'admin']}><Track /></MobileRoute>} />
         <Route path="/history" element={<MobileRoute roles={['requester']}><History /></MobileRoute>} />
+        <Route path="/account" element={<MobileRoute roles={['requester']}><Account /></MobileRoute>} />
         <Route path="/crew" element={<MobileRoute roles={['crew']}><Crew /></MobileRoute>} />
 
         {/* Console: controller, admin, authority, hospital staff */}

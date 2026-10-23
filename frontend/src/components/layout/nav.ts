@@ -1,5 +1,5 @@
 import {
-  Ambulance, BarChart3, Building2, ClipboardList, History, LayoutDashboard, MonitorDot, Receipt, ScrollText, Settings,
+  Ambulance, BarChart3, Building2, ClipboardList, History, LayoutDashboard, MonitorDot, Receipt, ScrollText, Settings, ShieldCheck,
   Siren, Users, type LucideIcon,
 } from 'lucide-react';
 import type { Role } from '../../lib/types';
@@ -40,6 +40,7 @@ export const APP_MENU: Partial<Record<Role, NavItem[]>> = {
   requester: [
     { to: '/sos', label: 'Request ambulance', icon: Siren },
     { to: '/history', label: 'My trips', icon: History },
+    { to: '/account', label: 'Account & privacy', icon: ShieldCheck },
   ],
   crew: [{ to: '/crew', label: 'Duty', icon: Ambulance }],
 };

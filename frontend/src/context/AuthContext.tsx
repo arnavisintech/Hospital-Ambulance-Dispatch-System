@@ -6,7 +6,7 @@ interface AuthCtx {
   user: User | null;
   loading: boolean;
   login: (identifier: string, password: string) => Promise<User>;
-  register: (b: { name: string; phone?: string; email?: string; password: string }) => Promise<User>;
+  register: (b: { name: string; phone?: string; email?: string; password: string; consent: boolean }) => Promise<User>;
   guest: (b?: { name?: string; phone?: string }) => Promise<User>;
   logout: () => void;
   /** Change own password; the server revokes other sessions and returns a fresh token. */

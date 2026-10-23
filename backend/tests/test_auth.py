@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 
 def test_register_login_me(client):
-    r = client.post("/api/auth/register", json={"name": "Asha", "email": "Asha@Example.com", "password": "Secret@123"})
+    r = client.post("/api/auth/register", json={"consent": True, "name": "Asha", "email": "Asha@Example.com", "password": "Secret@123"})
     assert r.status_code == 201
     body = r.json()
     assert body["user"]["role"] == "requester" and body["user"]["email"] == "asha@example.com"
@@ -15,22 +15,22 @@ def test_register_login_me(client):
 
 
 def test_login_by_phone_and_bad_password(client):
-    client.post("/api/auth/register", json={"name": "B", "phone": "+919876543210", "password": "Secret@123"})
+    client.post("/api/auth/register", json={"consent": True, "name": "B", "phone": "+919876543210", "password": "Secret@123"})
     assert client.post("/api/auth/login", json={"identifier": "+919876543210", "password": "Secret@123"}).status_code == 200
     assert client.post("/api/auth/login", json={"identifier": "+919876543210", "password": "wrong-pass"}).status_code == 401
     assert client.post("/api/auth/login", json={"identifier": "nobody@x.com", "password": "whatever1"}).status_code == 401
 
 
 def test_only_requester_self_registers(client):
-    r = client.post("/api/auth/register", json={"name": "X", "email": "x@x.com", "password": "Secret@123", "role": "admin"})
+    r = client.post("/api/auth/register", json={"consent": True, "name": "X", "email": "x@x.com", "password": "Secret@123", "role": "admin"})
     assert r.status_code == 403
 
 
 def test_duplicate_and_validation(client):
-    p = {"name": "A", "email": "a@x.com", "password": "Secret@123"}
+    p = {"consent": True, "name": "A", "email": "a@x.com", "password": "Secret@123"}
     assert client.post("/api/auth/register", json=p).status_code == 201
     assert client.post("/api/auth/register", json=p).status_code == 409
-    assert client.post("/api/auth/register", json={"name": "A", "password": "Secret@123"}).status_code == 422
+    assert client.post("/api/auth/register", json={"consent": True, "name": "A", "password": "Secret@123"}).status_code == 422
     assert client.post("/api/auth/register", json={**p, "email": "b@x.com", "password": "short"}).status_code == 422
 
 
@@ -55,7 +55,7 @@ def test_me_requires_token_and_me_for_staff_ids(client, world):
 
 
 def test_password_never_audited(client):
-    client.post("/api/auth/register", json={"name": "A", "email": "a@x.com", "password": "Sup3rSecret!"})
+    client.post("/api/auth/register", json={"consent": True, "name": "A", "email": "a@x.com", "password": "Sup3rSecret!"})
     client.post("/api/auth/login", json={"identifier": "a@x.com", "password": "Sup3rSecret!"})
     with SessionLocal() as db:
         rows = db.execute(select(AuditLog)).scalars().all()

@@ -13,8 +13,11 @@ from sqlalchemy.orm import Session
 from .. import audit, ratelimit
 from ..db import get_db
 from ..deps import current_user
-from ..models import Role, User
+from ..models import (BillingRecord, EmergencyRequest, RequestStatus, Role, TripRecord, User,
+                      utcnow)
 from ..security import create_token, hash_password, verify_password
+from ..services import trips
+from ..services.billing import bill_out
 from ..services.trips import user_ambulance_id, user_hospital_id
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -50,6 +53,14 @@ class RegisterIn(BaseModel):
     email: str | None = None
     password: str = Field(min_length=8, max_length=72)
     role: str = "requester"
+    consent: bool  # privacy notice accepted (DPDP Act); must be true
+
+    @field_validator("consent")
+    @classmethod
+    def _consent(cls, v):
+        if v is not True:
+            raise ValueError("you must accept the privacy notice to create an account")
+        return v
 
     @field_validator("email")
     @classmethod
@@ -98,7 +109,7 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
     if db.execute(select(User).where(or_(*clauses))).first():
         raise HTTPException(409, "An account with this email or phone already exists")
     u = User(name=body.name.strip(), phone=body.phone, email=body.email,
-             password_hash=hash_password(body.password), role=Role.requester)
+             password_hash=hash_password(body.password), role=Role.requester, consented_at=utcnow())
     db.add(u)
     try:
         db.flush()
@@ -200,3 +211,50 @@ def consume_ticket(db: Session, ticket: str) -> User | None:
     if u is None or not u.is_active or (u.token_version or 0) != entry[1]:
         return None
     return u
+
+
+# ---------------------------------------------------------------- DPDP: export and erasure
+class EraseIn(BaseModel):
+    password: str = Field(min_length=1, max_length=200)
+
+
+@router.get("/me/export")
+def export_my_data(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Everything HADS holds that identifies the caller (right to access)."""
+    reqs = db.execute(select(EmergencyRequest).where(EmergencyRequest.requester_id == user.id)
+                      .order_by(EmergencyRequest.id)).scalars().all()
+    ids = [r.id for r in reqs]
+    trip_rows = db.execute(select(TripRecord).where(TripRecord.request_id.in_(ids))).scalars().all() if ids else []
+    bills = db.execute(select(BillingRecord).where(BillingRecord.trip_id.in_([t.id for t in trip_rows]))).scalars().all()         if trip_rows else []
+    audit.log(db, "auth.export", "user", user.id, user.id, {"requests": len(reqs)})
+    db.commit()
+    return {
+        "exported_at": utcnow().isoformat(),
+        "user": {**user_out(db, user), "created_at": user.created_at.isoformat() if user.created_at else None,
+                 "consented_at": user.consented_at.isoformat() if user.consented_at else None},
+        "requests": [trips.request_out(db, r) for r in reqs],
+        "trips": [{"id": t.id, "request_id": t.request_id, "handover_time": trips.iso(t.handover_time),
+                   "response_time_seconds": t.response_time_seconds, "distance_km": t.distance_km,
+                   "feedback": (t.summary or {}).get("feedback")} for t in trip_rows],
+        "bills": [bill_out(db, b) for b in bills],
+    }
+
+
+@router.delete("/me")
+def erase_me(body: EraseIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Right to erasure: remove personal data, keep de-identified trip, billing and audit records (legal retention)."""
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(403, "Password is incorrect")
+    reqs = db.execute(select(EmergencyRequest).where(EmergencyRequest.requester_id == user.id)).scalars().all()
+    if any(r.status not in trips.TERMINAL for r in reqs):
+        raise HTTPException(409, "You have a request in progress; erase your account after it is completed")
+    for r in reqs:
+        r.caller_name = r.caller_phone = r.notes = r.address = None
+    user.name, user.email, user.phone = "Erased user", None, None
+    user.is_active = False
+    user.erased_at = utcnow()
+    user.token_version = (user.token_version or 0) + 1
+    user.password_hash = hash_password(secrets.token_urlsafe(24))
+    audit.log(db, "auth.erase", "user", user.id, user.id, {"requests_anonymised": len(reqs)})
+    db.commit()
+    return {"erased": True}

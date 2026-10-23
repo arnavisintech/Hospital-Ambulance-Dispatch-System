@@ -58,7 +58,7 @@ def test_signup_limited_per_ip(client):
     for i in range(10):
         assert client.post("/api/auth/guest", json={}).status_code == 201
     assert client.post("/api/auth/guest", json={}).status_code == 429
-    r = client.post("/api/auth/register", json={"name": "X", "email": "x@hads.test", "password": "password123"})
+    r = client.post("/api/auth/register", json={"consent": True, "name": "X", "email": "x@hads.test", "password": "password123"})
     assert r.status_code == 429
 
 
