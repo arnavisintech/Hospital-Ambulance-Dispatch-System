@@ -231,6 +231,15 @@ def announce_destination(db: Session, req: EmergencyRequest, h: Hospital, extra:
                     "eta_seconds": req.eta_seconds, "ambulance_id": req.ambulance_id})
 
 
+def notify_destination(db: Session, req: EmergencyRequest, h: Hospital) -> None:
+    """Durable notifications for the destination decision (caller commits)."""
+    from . import notify
+    notify.notify_requester(db, req, "destination.confirmed", f"Going to {h.name}",
+                            "The hospital has been told you are coming.", {"hospital_id": h.id})
+    notify.notify_hospital(db, h.id, "hospital.incoming", f"Incoming patient · request #{req.id}",
+                           f"{req.incident_type.value.title()} · severity {req.severity}", {"request_id": req.id})
+
+
 def confirm_destination(db: Session, req: EmergencyRequest, exclude: set[int] | None = None,
                         user_id: int | None = None) -> Hospital | None:
     """Pick + soft-reserve the destination hospital. Caller commits. None => escalate to controller."""
@@ -254,5 +263,6 @@ def confirm_destination(db: Session, req: EmergencyRequest, exclude: set[int] | 
     audit.log(db, "capacity.reserve", "hospital", h.id, user_id,
               {"request_id": req.id, "kind": res["kind"], "counted": res["counted"],
                "capacity": best["capacity"]})
+    notify_destination(db, req, h)
     announce_destination(db, req, h, {"capacity": best["capacity"]})
     return h

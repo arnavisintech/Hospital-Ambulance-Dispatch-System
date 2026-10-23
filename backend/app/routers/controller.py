@@ -105,6 +105,7 @@ def set_destination(request_id: int, body: DestinationIn, user: User = Depends(c
     trip = trips.get_or_create_trip(db, req) if req.ambulance_id else None
     if trip is not None:
         trip.destination_hospital_id = h.id
+    capacity.notify_destination(db, req, h)
     db.commit()
     capacity.announce_destination(db, req, h, {"manual": True})
     return trips.request_out(db, req)

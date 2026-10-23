@@ -16,7 +16,7 @@ log = logging.getLogger("hads")
 # Routers are owned by different modules; each exposes `router` and is mounted under /api.
 ROUTER_MODULES = [
     "auth", "requests", "crew", "controller", "hospitals", "tracking_ws",   # core workflow
-    "public", "geo",                                                         # v2: share links, places
+    "public", "geo", "notifications",                                        # v2: share links, places, inbox
     "analytics", "rebalance", "billing", "dashboard", "admin", "audit",      # ops / analytics
 ]
 

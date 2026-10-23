@@ -300,6 +300,9 @@ def close_trip(db: Session, req: EmergencyRequest, user_id: int | None, *, manua
                 hook()
         except Exception:  # noqa: BLE001
             log.exception("%s failed for trip %s", label, trip.id)
+    from . import notify
+    notify.notify_requester(db, req, "request.completed", "Trip completed",
+                            "Handover is done. Your bill and trip summary are ready.", {"trip_id": trip.id})
     db.commit()
     legs.drop(req.id)
     data = {"request_id": req.id, "trip_id": trip.id, "closed_manually": manual}

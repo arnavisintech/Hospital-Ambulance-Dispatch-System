@@ -8,7 +8,7 @@ from ..db import get_db
 from ..deps import current_user, require_roles
 from ..models import (BillingRecord, ClaimStatus, EmergencyRequest, HospitalStaffProfile, InsuranceClaim, PaymentStatus,
                       Role, TripRecord, User)
-from ..services import billing as svc
+from ..services import billing as svc, notify
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
@@ -116,6 +116,11 @@ def claim_status(claim_id: int, body: ClaimStatusIn, db: Session = Depends(get_d
     svc.update_claim_status(db, c, body.status, body.remarks)
     audit.log(db, "billing.claim.status", "claim", c.id, user.id,
               {"from": old, "to": body.status.value, "remarks": body.remarks})
+    trip = db.get(TripRecord, db.get(BillingRecord, c.bill_id).trip_id)
+    req = db.get(EmergencyRequest, trip.request_id) if trip else None
+    if req is not None:
+        notify.notify_requester(db, req, "claim.status", f"Insurance claim {body.status.value.replace('_', ' ')}",
+                                body.remarks or "", {"claim_id": c.id, "bill_id": c.bill_id})
     db.commit()
     bill = db.get(BillingRecord, c.bill_id)
     return svc.bill_out(db, bill, c)

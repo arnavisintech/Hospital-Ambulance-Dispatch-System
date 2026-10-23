@@ -19,6 +19,8 @@ router = APIRouter(tags=["realtime"])
 def _allowed(db, user: User, topic: str) -> bool:
     """STRQ2: topic-level authorisation per role."""
     kind, _, ident = topic.partition(":")
+    if kind == "user":
+        return ident.isdigit() and int(ident) == user.id
     if user.role in (Role.controller, Role.admin):
         return kind in ("request", "controller", "crew", "hospital")
     if kind == "request" and ident.isdigit():
@@ -28,6 +30,8 @@ def _allowed(db, user: User, topic: str) -> bool:
         return trips.user_ambulance_id(db, user) == int(ident)
     if kind == "hospital" and ident.isdigit() and user.role == Role.hospital_staff:
         return trips.user_hospital_id(db, user) == int(ident)
+    if kind == "user" and ident.isdigit():  # own notification inbox only, whatever the role
+        return int(ident) == user.id
     return False
 
 

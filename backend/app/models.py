@@ -398,6 +398,19 @@ class RequestEvent(Base):
     request = relationship("EmergencyRequest")
 
 
+class Notification(Base):
+    """In-app notification (WBS 4.5). Pushed on websocket topic user:{id}; unread rows are fetched on reconnect."""
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    type: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(120))
+    body: Mapped[str] = mapped_column(String(255), default="")
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class ShareLink(Base):
     """Family share link (v2 section 4). token = '<random id>.<hmac>'; one link per request (idempotent)."""
     __tablename__ = "share_links"

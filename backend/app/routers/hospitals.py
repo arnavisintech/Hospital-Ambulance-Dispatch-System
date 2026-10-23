@@ -8,7 +8,7 @@ from .. import audit, events
 from ..db import get_db
 from ..deps import current_user, require_roles
 from ..models import Ambulance, AuditLog, EmergencyRequest, Hospital, RequestStatus, Role, TripRecord, User, utcnow
-from ..services import capacity, dispatch, trips
+from ..services import capacity, dispatch, notify, trips
 
 router = APIRouter(prefix="/api/hospitals", tags=["hospitals"])
 RS = RequestStatus
@@ -141,6 +141,8 @@ def acknowledge(hospital_id: int, request_id: int, user: User = Depends(require_
     if req.status not in INCOMING:
         raise HTTPException(409, f"Request is {req.status.value}")
     audit.log(db, "hospital.acknowledge", "request", req.id, user.id, {"hospital_id": hospital_id})
+    notify.notify_requester(db, req, "hospital.acknowledged", "The hospital is ready for you",
+                            "Staff have acknowledged the incoming patient.", {"hospital_id": hospital_id})
     db.commit()
     data = {"request_id": req.id, "hospital_id": hospital_id, "acknowledged": True}
     events.publish(f"request:{req.id}", "hospital.incoming", data)

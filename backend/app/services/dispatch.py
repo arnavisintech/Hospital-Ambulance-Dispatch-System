@@ -19,8 +19,8 @@ from .. import audit, db as dbmod, events
 from ..config import get_settings
 from ..geo import haversine_km, zone_of
 from ..models import (Ambulance, AmbulanceStatus, AttemptStatus, DispatchAttempt, EmergencyRequest, RequestStatus,
-                      utcnow)
-from . import analytics, capacity, routing, trips
+                      Role, utcnow)
+from . import analytics, capacity, notify, routing, trips
 from .trips import aware
 
 log = logging.getLogger("hads.dispatch")
@@ -108,6 +108,8 @@ def _escalate(db: Session, req: EmergencyRequest, reason: str, silent: bool = Fa
         return
     audit.log(db, "dispatch.escalate", "request", req.id, None,
               {"reason": reason, "severity": req.severity, "incident_type": req.incident_type.value})
+    notify.notify_role(db, Role.controller, "dispatch.escalated", f"Request #{req.id} needs a manual decision",
+                       f"{reason.replace('_', ' ')} · severity {req.severity}", {"request_id": req.id})
     db.commit()
     data = {"request_id": req.id, "reason": reason, "severity": req.severity, "lat": req.lat, "lng": req.lng}
     events.publish("controller", "dispatch.escalated", data)
@@ -148,6 +150,8 @@ def _dispatch_one(db: Session, req: EmergencyRequest, started: float, silent_if_
     no_hospital = False
     if req.destination_hospital_id is None:
         no_hospital = capacity.confirm_destination(db, req) is None
+    notify.notify_crew(db, amb.id, "dispatch.offer", "New emergency request",
+                       f"{req.incident_type.value.title()} · severity {req.severity}", {"request_id": req.id})
     db.commit()
     timeout = trips.get_setting(db, "crew_ack_timeout_s", get_settings().crew_ack_timeout_s)
     events.publish(f"crew:{amb.id}", "dispatch.offer", {
@@ -282,6 +286,8 @@ def assign_manual(db: Session, req: EmergencyRequest, amb_id: int, user_id: int,
         audit.log(db, "dispatch.override", "request", req.id, user_id,
                   {"ambulance_id": amb.id, "previous_ambulance_id": previous, "eta_seconds": eta, "reason": reason})
         no_hospital = req.destination_hospital_id is None and capacity.confirm_destination(db, req, user_id=user_id) is None
+        notify.notify_crew(db, amb.id, "dispatch.offer", "New emergency request (assigned by control)",
+                           f"{req.incident_type.value.title()} · severity {req.severity}", {"request_id": req.id})
         db.commit()
         events.publish(f"crew:{amb.id}", "dispatch.offer", {
             "request_id": req.id, "incident_type": req.incident_type.value, "severity": req.severity,
