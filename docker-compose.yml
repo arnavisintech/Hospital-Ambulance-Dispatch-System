@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hads
+      POSTGRES_PASSWORD: hads
+      POSTGRES_DB: hads
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hads"]
+      interval: 5s
+      retries: 10
+
+  # One-shot: download Geofabrik southern-zone, clip to Chennai with osmium, osrm-extract/partition/customize (MLD)
+  # into the osrm-data volume. A no-op once the dataset exists. First run: ~600 MB download, a few minutes CPU,
+  # ~2 GB RAM peak. Rebuild: `docker compose rm -sf osrm osrm-prep && docker volume rm <project>_osrm-data`.
+  osrm-prep:
+    build:
+      context: ./infra/osrm
+      args:
+        OSRM_IMAGE: ${OSRM_IMAGE:-osrm/osrm-backend:v5.25.0}
+    environment:
+      DATA_DIR: /data
+      PBF_URL: ${OSRM_PBF_URL:-https://download.geofabrik.de/asia/india/southern-zone-latest.osm.pbf}
+      BBOX: "79.95,12.75,80.40,13.30"
+      OSRM_NAME: chennai
+    volumes: [osrm-data:/data]
+    restart: "no"
+
+  # Road router (MLD). OSRM knows free-flow speeds only; the backend applies the time-of-day traffic factor.
+  osrm:
+    image: ${OSRM_IMAGE:-osrm/osrm-backend:v5.25.0}
+    command: ["osrm-routed", "--algorithm", "mld", "--max-table-size", "500", "/data/chennai.osrm"]
+    volumes: [osrm-data:/data:ro]
+    depends_on:
+      osrm-prep: {condition: service_completed_successfully}
+    ports: ["5000:5000"]
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg2://hads:hads@db:5432/hads
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      SEED_ON_STARTUP: "true"
+      ROUTING_PROVIDER: osrm
+      OSRM_URL: http://osrm:5000     # falls back to haversine automatically if OSRM is down or slower than 1.5 s
+      DEMO_AUTOPILOT: ${DEMO_AUTOPILOT:-true}
+      DEMO_SPEEDUP: ${DEMO_SPEEDUP:-4}
+      GEO_PROVIDER: ${GEO_PROVIDER:-nominatim}
+    depends_on:
+      db: {condition: service_healthy}
+      # not required: without OSRM (e.g. no internet for the first prep) the backend still runs on haversine
+      osrm: {condition: service_started, required: false}
+    ports: ["8000:8000"]
+
+  frontend:
+    build: ./frontend
+    environment:
+      STADIA_API_KEY: ${STADIA_API_KEY:-}   # required once served from a real domain (free at stadiamaps.com)
+    depends_on: [backend]
+    ports: ["8080:80"]
+
+volumes:
+  pgdata:
+  osrm-data:

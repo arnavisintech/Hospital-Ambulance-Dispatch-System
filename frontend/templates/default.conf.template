@@ -1,0 +1,66 @@
+# Rendered by the nginx image's envsubst step at container start (only ${STADIA_API_KEY} is substituted).
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+# Base-map tiles are proxied and cached here: repeat loads are instant and the provider key stays server-side.
+# With no key, the browser's own Referer is forwarded (Stadia allows localhost); deployed domains need a key,
+# otherwise the frontend falls back to OpenStreetMap tiles on its own.
+proxy_cache_path /var/cache/nginx/tiles levels=1:2 keys_zone=tiles:20m max_size=1g inactive=30d use_temp_path=off;
+
+map "${STADIA_API_KEY}" $stadia_args {
+  ""      "";
+  default "api_key=${STADIA_API_KEY}";
+}
+
+server {
+  listen 80;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  gzip on;
+  gzip_types text/plain text/css application/json application/javascript image/svg+xml;
+
+  location /api/ {
+    proxy_pass http://backend:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 3600s;
+  }
+
+  location /tiles/ {
+    set $args $stadia_args;
+    rewrite ^/tiles/(\d+/\d+/\d+(@2x)?\.png)$ /tiles/alidade_smooth/$1 break;
+    proxy_pass https://tiles.stadiamaps.com;
+    proxy_ssl_server_name on;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Cookie "";
+    proxy_cache tiles;
+    proxy_cache_key $uri;
+    proxy_cache_valid 200 30d;
+    proxy_cache_valid any 1m;
+    proxy_cache_lock on;
+    proxy_cache_use_stale error timeout updating;
+    proxy_ignore_headers Set-Cookie Cache-Control Expires;
+    add_header Cache-Control "public, max-age=604800";
+    add_header X-Tile-Cache $upstream_cache_status;
+  }
+
+  location /assets/ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+    try_files $uri =404;
+  }
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}

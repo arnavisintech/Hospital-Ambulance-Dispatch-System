@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.db
+backend/hads.db
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+*.local
+
+# Secrets / local runtime data
+.env
+certs/
+backups/
+infra/**/data/
+
+# Executor scratch

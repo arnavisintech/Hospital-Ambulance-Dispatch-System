@@ -1,0 +1,169 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------------------------
+ * HADS design tokens — docs/DESIGN_SYSTEM.md. RGB triplets so Tailwind opacity modifiers work.
+ * In raw SVG/HTML strings (Leaflet divIcons) use `rgb(var(--brand-500))`.
+ * ------------------------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  --brand-50: 254 242 243;
+  --brand-100: 253 227 229;
+  --brand-200: 251 201 205;
+  --brand-400: 240 100 111;
+  --brand-500: 226 55 68;
+  --brand-600: 200 36 58;
+  --brand-700: 165 28 48;
+
+  --ink-900: 17 24 39;
+  --ink-700: 55 65 81;
+  --ink-500: 107 114 128;
+  --ink-400: 156 163 175;
+
+  --line: 229 231 235;
+  --line-strong: 209 213 219;
+  --line-soft: 238 240 243;
+  --canvas: 244 245 247;
+  --surface: 255 255 255;
+
+  /* Tone = solid colour (icons, fills, dots); -bg = tint; -fg = text on tint/white (>= 4.5:1). */
+  --success: 22 163 74;   --success-bg: 236 253 243; --success-fg: 21 128 61;
+  --info: 37 99 235;      --info-bg: 239 246 255;    --info-fg: 29 78 216;
+  --warning: 217 119 6;   --warning-bg: 255 251 235; --warning-fg: 180 83 9;
+  --violet: 124 58 237;   --violet-bg: 245 243 255;  --violet-fg: 109 40 217;
+  --orange: 234 88 12;    --orange-bg: 255 247 237;  --orange-fg: 194 65 12;
+  --teal: 13 148 136;     --teal-bg: 240 253 250;    --teal-fg: 15 118 110;
+
+  --chart-grid: 238 240 243;
+
+  /* Layout metrics shared by layouts/sheets. */
+  --appbar-h: 60px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+  html, body { @apply bg-canvas; }
+  body {
+    @apply min-h-dvh font-sans text-base text-ink-900 antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  #root { @apply min-h-dvh; isolation: isolate; }
+  h1, h2, h3, h4 { @apply font-bold tracking-tight text-ink-900; }
+  ::selection { background: rgb(var(--brand-100)); color: rgb(var(--ink-900)); }
+
+  /* Visible focus for keyboard users only. */
+  :focus { outline: none; }
+  :focus-visible { outline: 2px solid rgb(var(--brand-500)); outline-offset: 2px; border-radius: 6px; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
+
+  button:disabled, [aria-disabled='true'] { cursor: not-allowed; }
+  input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+}
+
+@layer utilities {
+  .min-h-dvh { min-height: 100vh; min-height: 100dvh; }
+  .h-dvh { height: 100vh; height: 100dvh; }
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+  .pt-safe { padding-top: var(--safe-top); }
+  .pb-safe { padding-bottom: var(--safe-bottom); }
+  .pl-safe { padding-left: var(--safe-left); }
+  .pr-safe { padding-right: var(--safe-right); }
+  .pb-safe-4 { padding-bottom: calc(var(--safe-bottom) + 1rem); }
+  .pb-safe-3 { padding-bottom: calc(var(--safe-bottom) + 0.75rem); }
+  .mb-safe { margin-bottom: var(--safe-bottom); }
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-thin { scrollbar-width: thin; scrollbar-color: rgb(var(--line-strong)) transparent; }
+  .press { @apply transition-transform duration-micro active:scale-[0.98]; }
+  .text-balance { text-wrap: balance; }
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Legacy component classes (pre-v2 pages). Re-themed light so they keep working until screen agents
+ * migrate them to src/components/ui. New code: use <Button>, <Card>, <Input>... instead.
+ * ------------------------------------------------------------------------------------------- */
+@layer components {
+  .card { @apply rounded-lg border border-line/70 bg-surface p-4 shadow-card; }
+  .btn { @apply inline-flex min-h-[40px] items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition duration-micro active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50; }
+  .btn-primary { @apply btn bg-brand-500 text-white hover:bg-brand-600; }
+  .btn-secondary { @apply btn border border-line bg-surface text-ink-900 hover:bg-canvas; }
+  .btn-ghost { @apply btn text-ink-700 hover:bg-canvas; }
+  .btn-ok { @apply btn bg-success text-white hover:brightness-95; }
+  .btn-sm { @apply min-h-[32px] px-2.5 py-1 text-xs; }
+  .input { @apply w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink-900 placeholder-ink-400 focus:border-brand-500 focus:shadow-focus focus:outline-none; }
+  .label { @apply mb-1 block text-sm font-medium text-ink-700; }
+  .chip { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold; }
+  .th { @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-500; }
+  .td { @apply px-3 py-2 text-sm; }
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Leaflet — premium light map look.
+ * ------------------------------------------------------------------------------------------- */
+.leaflet-container {
+  background: #eef0f1; /* matches CARTO Voyager land colour while tiles load */
+  font-family: inherit;
+  isolation: isolate; /* keep Leaflet's 400-1000 z-indexes inside the map (z-map = 0) */
+  z-index: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.leaflet-container a { color: rgb(var(--info)); }
+.leaflet-control-attribution {
+  font-size: 10px !important; line-height: 1.4;
+  background: rgb(255 255 255 / .78) !important; border-radius: 8px 0 0 0;
+  padding: 1px 6px !important; color: rgb(var(--ink-500)) !important;
+}
+.leaflet-control-attribution a { color: rgb(var(--ink-700)) !important; }
+.leaflet-popup-content-wrapper { border-radius: 16px; box-shadow: 0 10px 30px -8px rgba(16,24,40,.16); }
+.leaflet-popup-content { margin: 12px 14px; font-size: 14px; color: rgb(var(--ink-900)); }
+.leaflet-tooltip {
+  border: 0; border-radius: 10px; padding: 6px 10px; font: 600 12px/1.35 inherit;
+  color: rgb(var(--ink-900)); box-shadow: 0 10px 30px -8px rgba(16,24,40,.22);
+}
+.leaflet-tooltip-top::before, .leaflet-tooltip-bottom::before, .leaflet-tooltip-left::before, .leaflet-tooltip-right::before { display: none; }
+
+.hads-marker { background: transparent !important; border: none !important; }
+.hads-marker:focus-visible { outline: 2px solid rgb(var(--brand-500)); outline-offset: 4px; border-radius: 12px; }
+
+/* Ambulance marker internals (see components/map/AmbulanceMarker.tsx). */
+.hads-amb { position: relative; width: 100%; height: 100%; }
+.hads-amb__rot { position: absolute; inset: 0; transition: transform 220ms linear; will-change: transform; }
+.hads-amb__dot { position: absolute; right: -2px; top: -2px; width: 12px; height: 12px; border-radius: 9999px; border: 2px solid #fff; box-shadow: 0 1px 2px rgba(16,24,40,.25); }
+.hads-amb--selected > svg { filter: drop-shadow(0 0 0 rgb(var(--brand-500))) drop-shadow(0 4px 10px rgba(226,55,68,.45)); }
+.hads-chip {
+  position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%);
+  white-space: nowrap; border-radius: 9999px; background: rgb(var(--ink-900)); color: #fff;
+  font: 700 12px/1 'Plus Jakarta Sans', system-ui, sans-serif; font-variant-numeric: tabular-nums;
+  padding: 6px 9px; box-shadow: 0 6px 16px -4px rgba(16,24,40,.35); pointer-events: none;
+}
+.hads-chip::after {
+  content: ''; position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: rgb(var(--ink-900));
+}
+
+/* Pulse ring used by PatientPin / PulseRadar. */
+.hads-pulse { position: absolute; inset: 0; border-radius: 9999px; background: currentColor; animation: pulse-ring 1.8s cubic-bezier(.16,1,.3,1) infinite; }
+.hads-pulse--delay { animation-delay: .9s; }
+@keyframes pulse-ring { 0% { transform: scale(.6); opacity: .55 } 100% { transform: scale(2.4); opacity: 0 } }
+
+/* Legacy `.pulse` helper used by the old MapView pins. */
+.pulse::after { content: ''; position: absolute; inset: 0; border-radius: 9999px; border: 2px solid currentColor; animation: pulse-ring 1.6s ease-out infinite; }
+
+/* ---------------------------------------------------------------------------------------------
+ * Reduced motion: keep fades, drop transforms/loops.
+ * ------------------------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important; transition-duration: 0.01ms !important;
+  }
+  .hads-pulse, .pulse::after { animation: none !important; opacity: .18; transform: scale(1.6); }
+  .hads-amb__rot { transition: none; }
+}
