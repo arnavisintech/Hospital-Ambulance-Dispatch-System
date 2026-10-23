@@ -56,7 +56,11 @@ def test_risk_map_endpoint_and_roles(env):
     assert r.status_code == 200
     j = r.json()
     assert j["hour"] == 9 and j["model_version"] and j["zones"]
-    assert set(j["zones"][0]) == {"zone_id", "lat", "lng", "expected_demand", "risk", "zone_label"}
+    assert set(j["zones"][0]) == {"zone_id", "lat", "lng", "expected_demand", "risk", "zone_label",
+                                  "households", "seniors", "senior_share"}
+    assert j["demographics_source"] == "synthetic"
+    known = [z for z in j["zones"] if z["households"]]
+    assert known and all(0 < z["senior_share"] < 0.5 for z in known)
     assert c.get("/api/analytics/risk-map", headers=env.as_("authority@hads.in")).status_code == 200
     assert c.get("/api/analytics/risk-map", headers=env.as_("user@hads.in")).status_code == 403
     assert c.get("/api/analytics/risk-map").status_code == 401
@@ -155,3 +159,37 @@ def test_elderly_have_more_cardiac_stroke_respiratory():
     df = generate_history(30, end=_END, seed=5, demographics=_demo())
     med = df.incident_type.isin(["cardiac", "stroke", "respiratory"])
     assert med[df.patient_age_group == "elderly"].mean() > med[df.patient_age_group == "adult"].mean() + 0.15
+
+
+# ---------------------------------------------------------------- Task 14: demographic features in the model
+import math  # noqa: E402
+
+from app.models import ZoneDemographics  # noqa: E402
+
+
+def test_model_reports_senior_demand_ratio(env):
+    with env.db() as db:
+        info = analytics.model_info(db)
+    assert info["senior_demand_ratio"] is not None and info["senior_demand_ratio"] >= 1.3
+    assert info["r2"] > 0.05 and info["mae"] < 0.5
+
+
+def test_predictions_are_finite(env):
+    with env.db() as db:
+        vals = db.execute(select(ZoneRisk.expected_demand)).scalars().all()
+    assert vals and all(math.isfinite(v) and v >= 0 for v in vals)
+
+
+def test_cold_start_zone_gets_demand_from_demographics():
+    from ops_helpers import Env
+    e = Env()
+    small, big = "-30_-30", "-31_-31"   # far outside the city: no incident history at all
+    with e.db() as db:
+        for z, hh in ((small, 2000), (big, 20000)):
+            db.add(ZoneDemographics(zone_id=z, households=hh, pop_0_14=int(hh * 0.8), pop_15_59=int(hh * 2.6),
+                                    pop_60_74=int(hh * 0.35), pop_75_plus=int(hh * 0.12), source="import"))
+        db.commit()
+        analytics.train_model(db)
+        demand = {z: sum(r.expected_demand for r in db.execute(select(ZoneRisk).where(ZoneRisk.zone_id == z)).scalars())
+                  for z in (small, big)}
+    assert demand[small] > 0 and demand[big] > 2 * demand[small]

@@ -1,7 +1,11 @@
 """Predictive engine (FR3) + feedback loop (FR8).
 
 Model: HistGradientBoostingRegressor (Poisson loss) predicting expected incidents per zone-hour from
-[zone row/col, hour sin/cos, weekday, weekend flag, traffic index, historical zone mean, zone-hour-of-day mean].
+[zone row/col, hour sin/cos, weekday, weekend flag, traffic index, historical zone mean, zone-hour-of-day mean,
+ log households, senior share, log seniors, 75+ share].
+Zones that have residents (ZoneDemographics) but too little incident history get a demographic prior for their
+mean demand (a Poisson regression of observed zone means on the demographic features), so new or quiet
+neighbourhoods with many older residents are still covered.
 Predictions for every (zone, hour-of-day) are persisted as ZoneRisk rows; the dispatch hot path only reads an
 in-memory cache (get_zone_risk) and NEVER trains.
 """
@@ -15,11 +19,12 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.linear_model import PoissonRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from .. import places
+from .. import demographics, places
 from ..geo import zone_center, zone_of
 from ..models import IncidentHistory, ModelMetric, ZoneRisk, utcnow
 from ..synthetic import IST_OFFSET, traffic_profile
@@ -91,14 +96,19 @@ def get_zone_demand(db: Session, hour: int | None = None) -> dict[str, float]:
 def risk_map(db: Session, hour: int | None = None) -> dict:
     hour = local_hour() if hour is None else int(hour) % 24
     d = _hour_data(db, hour)
+    demo = demographics.load(db)
     zones = []
     for z, risk in d["risk"].items():
         lat, lng = zone_center(z)
+        zd = demo.get(z)
         zones.append({"zone_id": z, "lat": round(lat, 5), "lng": round(lng, 5), "zone_label": places.zone_label(lat, lng),
-                      "expected_demand": round(d["demand"][z], 4), "risk": round(risk, 4)})
+                      "expected_demand": round(d["demand"][z], 4), "risk": round(risk, 4),
+                      "households": zd.households if zd else None, "seniors": zd.seniors if zd else None,
+                      "senior_share": round(zd.senior_share, 4) if zd else None})
     zones.sort(key=lambda x: -x["risk"])
     gen = d.get("generated_at")
-    return {"hour": hour, "generated_at": gen.isoformat() if gen else None, "model_version": d["version"], "zones": zones}
+    return {"hour": hour, "generated_at": gen.isoformat() if gen else None, "model_version": d["version"],
+            "demographics_source": demographics.summary(db)["source"], "zones": zones}
 
 
 # ---------------------------------------------------------------- FR8 feedback
@@ -138,16 +148,44 @@ def _zone_rc(zones: list[str]) -> np.ndarray:
     return np.array([[int(p) for p in z.split("_")] for z in zones], dtype=float)
 
 
+DEMO_FEATURES = ("log_households", "senior_share", "log_seniors", "elderly_share")
+
+
+def _demo_matrix(db: Session, zones: list[str]) -> np.ndarray:
+    """(zones, 4): log1p(households), senior share, log1p(seniors), 75+ share. Zeros where demographics are unknown."""
+    demo = demographics.load(db)
+    out = np.zeros((len(zones), len(DEMO_FEATURES)))
+    for i, z in enumerate(zones):
+        d = demo.get(z)
+        if d is None or d.population <= 0:
+            continue
+        out[i] = (np.log1p(d.households), d.senior_share, np.log1p(d.seniors), d.pop_75_plus / d.population)
+    return out
+
+
+def _demographic_prior(known_means: np.ndarray, demo_known: np.ndarray, demo_new: np.ndarray) -> np.ndarray:
+    """Expected zone mean (incidents/hour) from demographics alone, fitted on zones that have history."""
+    has = demo_known.any(axis=1)
+    if has.sum() < 5 or not len(demo_new):
+        fallback = float(np.median(known_means)) if len(known_means) else 0.0
+        return np.full(len(demo_new), fallback)
+    model = PoissonRegressor(alpha=1e-3, max_iter=1000).fit(demo_known[has], known_means[has])
+    return np.clip(model.predict(demo_new), 0.0, None)
+
+
 def _features(rc: np.ndarray, zone_mean: np.ndarray, zone_hod: np.ndarray, tmean: np.ndarray,
-              hod: np.ndarray, wd: np.ndarray) -> np.ndarray:
+              hod: np.ndarray, wd: np.ndarray, demo: np.ndarray | None = None) -> np.ndarray:
     """Feature matrix for every (zone, column) pair; hod/wd are per-column arrays. Rows ordered zone-major."""
     z, c = len(rc), len(hod)
     ang = 2 * np.pi * hod / 24.0
+    if demo is None:
+        demo = np.zeros((z, len(DEMO_FEATURES)))
     cols = [
         np.repeat(rc[:, 0], c), np.repeat(rc[:, 1], c),
         np.tile(np.sin(ang), z), np.tile(np.cos(ang), z), np.tile(wd.astype(float), z),
         np.tile((wd >= 5).astype(float), z), np.tile(tmean[wd, hod], z),
         np.repeat(zone_mean, c), zone_hod[:, hod].reshape(-1),
+        *(np.repeat(demo[:, k], c) for k in range(demo.shape[1])),
     ]
     return np.column_stack(cols)
 
@@ -199,23 +237,42 @@ def train_model(db: Session) -> dict:
         for (d, h), v in obs.items():
             tmean[int(d), int(h)] = float(v)
         rc = _zone_rc(zones)
+        demo = _demo_matrix(db, zones)
 
         # --- time-based holdout evaluation
         split = max(H - HOLDOUT_DAYS * 24, int(H * 0.7))
         mae = r2 = float("nan")
         if H - split >= 24:
             zm, zh = _stats(counts[:, :split], hod[:split])
-            ev = _new_model().fit(_features(rc, zm, zh, tmean, hod[:split], wd[:split]), counts[:, :split].reshape(-1))
-            pred = ev.predict(_features(rc, zm, zh, tmean, hod[split:], wd[split:]))
+            ev = _new_model().fit(_features(rc, zm, zh, tmean, hod[:split], wd[:split], demo),
+                                  counts[:, :split].reshape(-1))
+            pred = ev.predict(_features(rc, zm, zh, tmean, hod[split:], wd[split:], demo))
             actual = counts[:, split:].reshape(-1)
             mae, r2 = float(mean_absolute_error(actual, pred)), float(r2_score(actual, pred))
 
         # --- final model on all data
         zm, zh = _stats(counts, hod)
-        model = _new_model().fit(_features(rc, zm, zh, tmean, hod, wd), counts.reshape(-1))
+        model = _new_model().fit(_features(rc, zm, zh, tmean, hod, wd, demo), counts.reshape(-1))
+
+        # cold start: zones with residents but (almost) no incident history get a demographic prior
+        known_set = set(zones)
+        cold = sorted(z for z in demographics.load(db) if z not in known_set)
+        all_zones = zones + cold
+        if cold:
+            demo_cold = _demo_matrix(db, cold)
+            prior = _demographic_prior(zm, demo, demo_cold)
+            city_hod = (zh.sum(axis=0) / max(zm.sum(), 1e-9))                 # city-wide hour-of-day shape
+            zm_all = np.concatenate([zm, prior])
+            zh_all = np.vstack([zh, prior[:, None] * city_hod[None, :]])
+            rc_all, demo_all = np.vstack([rc, _zone_rc(cold)]), np.vstack([demo, demo_cold])
+        else:
+            zm_all, zh_all, rc_all, demo_all = zm, zh, rc, demo
         ph, pw = np.repeat(np.arange(24), 7), np.tile(np.arange(7), 24)
-        pred = np.clip(model.predict(_features(rc, zm, zh, tmean, ph, pw)), 0, None)
-        pred = pred.reshape(len(zones), 24, 7).mean(axis=2)
+        pred = np.clip(model.predict(_features(rc_all, zm_all, zh_all, tmean, ph, pw, demo_all)), 0, None)
+        pred = np.nan_to_num(pred, nan=0.0, posinf=0.0).reshape(len(all_zones), 24, 7).mean(axis=2)
+        if cold:  # the tree model barely extrapolates to unseen zones; anchor cold zones on their prior
+            n = len(zones)
+            pred[n:] = np.maximum(pred[n:], zh_all[n:])
         peak = float(pred.max()) or 1.0
         now = utcnow()
         version = "hgb-" + now.strftime("%Y%m%d%H%M%S")
@@ -223,18 +280,36 @@ def train_model(db: Session) -> dict:
         db.bulk_insert_mappings(ZoneRisk, [
             {"generated_at": now, "zone_id": z, "hour": h, "expected_demand": float(pred[i, h]),
              "risk": float(min(1.0, pred[i, h] / peak)), "model_version": version}
-            for i, z in enumerate(zones) for h in range(24)])
+            for i, z in enumerate(all_zones) for h in range(24)])
         db.add(ModelMetric(trained_at=now, model_version=version, mae=0.0 if np.isnan(mae) else round(mae, 5),
                            r2=0.0 if np.isnan(r2) else round(r2, 5), n_train=int(len(df)), n_live=n_live))
         db.commit()
         clear_cache()
         out = {"model_version": version, "mae": None if np.isnan(mae) else round(mae, 5),
                "r2": None if np.isnan(r2) else round(r2, 5), "n_train": int(len(df)), "n_live": n_live,
-               "n_zones": len(zones), "trained_at": now.isoformat(), "train_seconds": round(time.monotonic() - t0, 2)}
+               "n_zones": len(all_zones), "n_cold_start_zones": len(cold), "trained_at": now.isoformat(), "train_seconds": round(time.monotonic() - t0, 2)}
         log.info("model trained: %s", out)
         return out
     finally:
         _train_lock.release()
+
+
+def senior_demand_ratio(db: Session) -> float | None:
+    """Predicted daily demand per resident in the oldest quartile of zones (by 60+ share) divided by the youngest
+    quartile. > 1 means the model expects more emergencies where more older people live."""
+    latest = db.scalar(select(func.max(ZoneRisk.generated_at)))
+    demo = demographics.load(db)
+    if latest is None or len(demo) < 8:
+        return None
+    daily = dict(db.execute(select(ZoneRisk.zone_id, func.sum(ZoneRisk.expected_demand))
+                            .where(ZoneRisk.generated_at == latest).group_by(ZoneRisk.zone_id)).all())
+    rows = [(d.senior_share, daily[z] / d.population) for z, d in demo.items() if z in daily and d.population > 0]
+    if len(rows) < 8:
+        return None
+    rows.sort()
+    q = len(rows) // 4
+    low, high = np.mean([r[1] for r in rows[:q]]), np.mean([r[1] for r in rows[-q:]])
+    return round(float(high / low), 3) if low > 0 else None
 
 
 def model_info(db: Session, history: int = 20) -> dict:
@@ -243,8 +318,8 @@ def model_info(db: Session, history: int = 20) -> dict:
              "trained_at": m.trained_at.isoformat()} for m in rows]
     if not rows:
         return {"model_version": None, "mae": None, "r2": None, "n_train": 0, "n_live": 0, "trained_at": None,
-                "history": []}
-    return {**hist[0], "history": hist}
+                "senior_demand_ratio": None, "history": []}
+    return {**hist[0], "senior_demand_ratio": senior_demand_ratio(db), "history": hist}
 
 
 def latest_metric(db: Session) -> ModelMetric | None:
