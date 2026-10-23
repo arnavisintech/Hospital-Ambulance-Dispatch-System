@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     demo_speedup: float = 4.0
     autopilot_device_grace_s: int = 60  # a crew device that pinged within this window always wins
 
+    bootstrap_admin_email: str = ""     # first boot only: creates this admin when no users exist
+    bootstrap_admin_password: str = ""
     seed_on_startup: bool = False  # demo data with known passwords: never in production
     audit_retention_years: int = 5  # NFR7 (informational; rows are never deleted)
 

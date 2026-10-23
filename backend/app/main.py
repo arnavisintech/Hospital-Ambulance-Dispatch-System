@@ -36,6 +36,11 @@ async def lifespan(app: FastAPI):
                 seed_if_empty(db)
         except ImportError:
             log.warning("seed module not present yet")
+    else:
+        from .bootstrap import ensure_bootstrap_admin
+        with SessionLocal() as db:
+            if ensure_bootstrap_admin(db):
+                log.info("bootstrap admin created")
     try:  # v2: give pre-existing / seeded requests a status timeline (idempotent)
         from .services.trips import backfill_events
         with SessionLocal() as db:
