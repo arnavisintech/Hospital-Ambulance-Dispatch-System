@@ -162,3 +162,14 @@ export function fmtPhone(p?: string | null): string {
 
 // Back-compat: geo helpers used to live here.
 export { CHENNAI, haversineKm } from './geo';
+
+/** 0..1 share as a whole percent ("14%"); "-" when unknown. */
+export function fmtShare(x?: number | null): string {
+  return x === null || x === undefined || Number.isNaN(x) ? '-' : `${Math.round(x * 100)}%`;
+}
+
+/** "4,210 households · 14% aged 60+" for a zone with demographics, otherwise null. */
+export function demographicsLine(z: { households?: number | null; senior_share?: number | null }): string | null {
+  if (!z.households) return null;
+  return `${fmtNumber(z.households)} households · ${fmtShare(z.senior_share)} aged 60+`;
+}

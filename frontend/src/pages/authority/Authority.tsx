@@ -100,6 +100,8 @@ const GAP_CSV: CsvColumn<CoverageGap>[] = [
   { header: 'Longitude', value: (g) => g.lng },
   { header: 'Risk', value: (g) => g.risk },
   { header: 'Nearest free ambulance (km)', value: (g) => g.nearest_ambulance_km },
+  { header: 'Households', value: (g) => g.households },
+  { header: 'Aged 60+ (%)', value: (g) => (g.senior_share == null ? null : Math.round(g.senior_share * 1000) / 10) },
 ];
 
 export default function Authority() {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   fmtArrival, fmtClockTimer, fmtDistance, fmtDuration, fmtEta, fmtMeters, fmtMoney, fmtPhone, fmtRelative, initials, pct,
 } from '../lib/format';
+import { demographicsLine, fmtShare } from '../lib/format';
 
 describe('ETA', () => {
   it('formats chip text, rounding up', () => {
@@ -71,5 +72,19 @@ describe('money, distance, misc', () => {
     expect(initials('')).toBe('?');
     expect(fmtPhone('9840012345')).toBe('+91 98400 12345');
     expect(fmtPhone('+91 98400-12345')).toBe('+91 98400 12345');
+  });
+});
+
+describe('fmtShare / demographicsLine', () => {
+  it('formats a 0..1 share as a whole percent', () => {
+    expect(fmtShare(0.142)).toBe('14%');
+    expect(fmtShare(0)).toBe('0%');
+    expect(fmtShare(null)).toBe('-');
+    expect(fmtShare(undefined)).toBe('-');
+  });
+  it('summarises households and senior share, or nothing when unknown', () => {
+    expect(demographicsLine({ households: 4210, senior_share: 0.142 })).toBe('4,210 households · 14% aged 60+');
+    expect(demographicsLine({ households: null, senior_share: null })).toBeNull();
+    expect(demographicsLine({})).toBeNull();
   });
 });

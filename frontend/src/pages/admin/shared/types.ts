@@ -33,6 +33,7 @@ export interface DashHospital {
 export interface CoverageGap {
   zone_id: string | number; lat: number; lng: number; risk: number;
   nearest_ambulance_km?: number | null; zone_label?: string | null;
+  households?: number | null; senior_share?: number | null;
 }
 
 export interface DashSummary {

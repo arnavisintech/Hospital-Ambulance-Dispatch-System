@@ -4,10 +4,13 @@ export const API_BASE = '/api';
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** Structured `detail` from the server when it is not a plain message (e.g. {errors: [...]} on an import). */
+  detail?: unknown;
+  constructor(status: number, message: string, detail?: unknown) {
     super(message);
     this.status = status;
     this.name = 'ApiError';
+    this.detail = detail;
   }
 }
 
@@ -40,6 +43,8 @@ export interface ReqOpts {
   query?: Record<string, string | number | boolean | undefined | null>;
   auth?: boolean;
   signal?: AbortSignal;
+  /** Multipart body (file upload); sent as-is, the browser sets the boundary header. */
+  formData?: FormData;
 }
 
 export function buildUrl(path: string, query?: ReqOpts['query']): string {
@@ -57,14 +62,14 @@ export async function api<T = unknown>(path: string, opts: ReqOpts = {}): Promis
   const headers: Record<string, string> = { Accept: 'application/json' };
   const token = getToken();
   if (token && opts.auth !== false) headers.Authorization = `Bearer ${token}`;
-  if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (opts.body !== undefined && !opts.formData) headers['Content-Type'] = 'application/json';
 
   let res: Response;
   try {
     res = await fetch(buildUrl(path, opts.query), {
-      method: opts.method ?? (opts.body !== undefined ? 'POST' : 'GET'),
+      method: opts.method ?? (opts.body !== undefined || opts.formData ? 'POST' : 'GET'),
       headers,
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      body: opts.formData ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
       signal: opts.signal,
     });
   } catch (e) {
@@ -83,7 +88,8 @@ export async function api<T = unknown>(path: string, opts: ReqOpts = {}): Promis
       setToken(null);
       unauthorizedHandler?.();
     }
-    throw new ApiError(res.status, extractDetail(data, res.statusText || `HTTP ${res.status}`));
+    const detail = data && typeof data === 'object' ? (data as { detail?: unknown }).detail : undefined;
+    throw new ApiError(res.status, extractDetail(data, res.statusText || `HTTP ${res.status}`), detail);
   }
   return data as T;
 }

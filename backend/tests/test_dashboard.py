@@ -59,3 +59,12 @@ def test_empty_database_is_handled():
     assert j["kpis"]["requests_total"] == 0 and j["kpis"]["completion_rate"] == 0
     assert j["kpis"]["avg_response_s"] is None and j["stations"] == [] and j["coverage_gaps"] == []
     assert j["prediction"]["mae"] is None and j["sla"]["within_target_pct"] is None
+
+
+def test_coverage_gaps_carry_demographics():
+    from ops_helpers import Env
+    e = Env()
+    j = e.client.get("/api/dashboard/summary", headers=e.as_("authority@hads.in")).json()
+    gaps = j["coverage_gaps"]
+    assert gaps and all({"households", "senior_share"} <= set(g) for g in gaps)
+    assert any(g["households"] for g in gaps)

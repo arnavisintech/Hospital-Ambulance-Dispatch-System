@@ -69,3 +69,23 @@ describe('websocket url', () => {
     expect(u).toBe('wss://h.example/api/ws?ticket=tkt&topics=request%3A12%2Ccontroller');
   });
 });
+
+describe('multipart uploads and error detail', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+  it('sends FormData as-is without a JSON content type', async () => {
+    const f = mockFetch(200, { ok: 1 });
+    vi.stubGlobal('fetch', f);
+    const fd = new FormData();
+    fd.append('file', new Blob(['a,b']), 'x.csv');
+    await api('/admin/demographics/import', { method: 'POST', formData: fd });
+    const [, init] = f.mock.calls[0];
+    expect(init.body).toBe(fd);
+    expect(init.headers['Content-Type']).toBeUndefined();
+  });
+  it('keeps structured error detail on ApiError', async () => {
+    vi.stubGlobal('fetch', mockFetch(422, { detail: { errors: ['row 2: bad'] } }));
+    const err = (await api('/x').catch((e: unknown) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.detail).toEqual({ errors: ['row 2: bad'] });
+  });
+});

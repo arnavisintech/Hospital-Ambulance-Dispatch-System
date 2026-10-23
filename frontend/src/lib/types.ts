@@ -186,8 +186,11 @@ export interface Candidate {
   distance_km?: number | null; station_name?: string; status?: string; [k: string]: unknown;
 }
 
-export interface RiskZone { zone_id: string | number; lat: number; lng: number; expected_demand: number; risk: number; zone_label?: string | null }
-export interface RiskMap { hour: number; generated_at: string; model_version: string; zones: RiskZone[] }
+export interface RiskZone {
+  zone_id: string | number; lat: number; lng: number; expected_demand: number; risk: number; zone_label?: string | null;
+  households?: number | null; seniors?: number | null; senior_share?: number | null;
+}
+export interface RiskMap { hour: number; generated_at: string; model_version: string; demographics_source?: string | null; zones: RiskZone[] }
 
 export interface Recommendation {
   id: number; status: string; [k: string]: unknown;

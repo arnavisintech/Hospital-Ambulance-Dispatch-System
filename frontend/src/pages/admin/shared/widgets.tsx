@@ -9,7 +9,7 @@ import { useAsync } from '../../../hooks/useAsync';
 import { get } from '../../../lib/api';
 import { cn } from '../../../lib/cn';
 import type { Tone } from '../../../lib/status';
-import { fmtAge, fmtDistance, fmtNumber } from '../../../lib/format';
+import { demographicsLine, fmtAge, fmtDistance, fmtNumber } from '../../../lib/format';
 import type { HospitalBrief, RiskMap } from '../../../lib/types';
 import { clampPct, csvName, downloadCsv, fmtPercent, rangeToDays, RANGE_ITEMS, toCsv, type CsvColumn, type RangeKey } from './logic';
 import type { CoverageGap, DashHospital, DashStation, DashSummary } from './types';
@@ -225,6 +225,7 @@ export function CoverageGapList({ gaps, loading, onSelect, selected, limit = 10 
                 {g.nearest_ambulance_km === null || g.nearest_ambulance_km === undefined
                   ? 'No available ambulance' : `Nearest free ambulance ${fmtDistance(g.nearest_ambulance_km)}`}
               </span>
+              {demographicsLine(g) && <span className="block text-xs text-ink-500">{demographicsLine(g)}</span>}
             </span>
             <Badge tone={riskTone(g.risk, max)} title={`Predicted demand risk ${fmtNumber(g.risk, 3)} (relative to the highest gap)`}>{riskLabel(g.risk, max)}</Badge>
           </>

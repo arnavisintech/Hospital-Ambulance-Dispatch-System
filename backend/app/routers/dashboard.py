@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import places
+from .. import demographics, places
 from ..db import get_db
 from ..deps import require_roles
 from ..geo import haversine_km, zone_center
@@ -140,13 +140,16 @@ def summary(days: int = Query(7, ge=1, le=365), db: Session = Depends(get_db),
     risk = analytics.get_zone_risk(db, None)
     avail = amb_df[(amb_df["status"] == AmbulanceStatus.available.value) & amb_df["lat"].notna()] if len(amb_df) else amb_df
     if risk:
+        demo = demographics.load(db)
         pts = list(zip(avail["lat"], avail["lng"])) if len(avail) else []
         for z, rk in sorted(risk.items(), key=lambda kv: -kv[1])[:25]:
             lat, lng = zone_center(z)
             d = min((haversine_km(lat, lng, a, b) for a, b in pts), default=None)
             gaps.append({"zone_id": z, "lat": round(lat, 5), "lng": round(lng, 5), "zone_label": places.zone_label(lat, lng),
                          "risk": round(rk, 4),
-                         "nearest_ambulance_km": None if d is None else round(d, 2)})
+                         "nearest_ambulance_km": None if d is None else round(d, 2),
+                         "households": demo[z].households if z in demo else None,
+                         "senior_share": round(demo[z].senior_share, 4) if z in demo else None})
         gaps.sort(key=lambda g: -(g["risk"] * (g["nearest_ambulance_km"] if g["nearest_ambulance_km"] is not None else 99)))
         gaps = gaps[:10]
 

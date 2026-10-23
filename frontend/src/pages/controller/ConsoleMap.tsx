@@ -5,7 +5,7 @@ import { Marker } from 'react-leaflet';
 import {
   AmbulanceMarker, FitBounds, HospitalMarker, MapCanvas, RiskHeatLayer, RouteLine, StationMarker, Tooltip, useMap,
 } from '../../components/map';
-import { fmtAge } from '../../lib/format';
+import { demographicsLine, fmtAge } from '../../lib/format';
 import { ambulanceStatusMeta, incidentMeta, severityMeta, toneClasses } from '../../lib/status';
 import type { AmbulanceBrief, HospitalBrief, LatLng, RequestOut, RiskZone } from '../../lib/types';
 import { ROUTED, type BoardStation, type LiveBoard } from './board';
@@ -148,6 +148,7 @@ export function ConsoleMap({ live, selectedId, onSelect, layers, riskZones, move
             <>
               <span className="block font-bold">{z.zone_label ?? `Zone ${z.zone_id}`}</span>
               <span className="block font-medium tabular-nums">Risk {(z.risk <= 1 ? z.risk * 100 : z.risk).toFixed(0)}% · ~{z.expected_demand.toFixed(1)} calls/h</span>
+              {demographicsLine(z) && <span className="block tabular-nums">{demographicsLine(z)}</span>}
             </>
           )}
         />
