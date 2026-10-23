@@ -209,6 +209,9 @@ class EmergencyRequest(Base):
     address: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     incident_type: Mapped[IncidentType] = mapped_column(_enum(IncidentType), default=IncidentType.other)
     severity: Mapped[int] = mapped_column(Integer, default=3)  # 1 (minor) .. 5 (critical)
+    # child | adult | senior | elderly | unknown. Clinical hand-off info and demand-model input ONLY: never used in
+    # ambulance or hospital ranking (STRQ1, see tests/test_fairness.py).
+    patient_age_group: Mapped[str] = mapped_column(String(10), default="unknown")
     notes: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     status: Mapped[RequestStatus] = mapped_column(_enum(RequestStatus), default=RequestStatus.received, index=True)
     ambulance_id: Mapped[int | None] = mapped_column(ForeignKey("ambulances.id"), nullable=True)

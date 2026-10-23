@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyLiveEvent, isCancellable, pickEta, reachedAt, tripHeadline, tripStage, tripTimes } from '../pages/requester/trip';
+import { AGE_OPTIONS, applyLiveEvent, buildSosBody, isCancellable, pickEta, reachedAt, tripHeadline, tripStage, tripTimes } from '../pages/requester/trip';
 
 describe('tripStage', () => {
   it('maps statuses to screens', () => {
@@ -105,5 +105,23 @@ describe('tripTimes', () => {
     expect(t.responseS).toBeNull();
     expect(t.totalS).toBe(1200);
     expect(reachedAt(undefined, 'on_scene')).toBeNull();
+  });
+});
+
+describe('buildSosBody', () => {
+  const base = { uuid: 'u-1', center: [13.08, 80.27] as [number, number], type: 'cardiac', severity: 4, notes: '  ' };
+  it('defaults the optional age group to unknown and trims empty notes', () => {
+    expect(buildSosBody(base)).toEqual({
+      client_uuid: 'u-1', lat: 13.08, lng: 80.27, address: undefined, incident_type: 'cardiac', severity: 4,
+      notes: undefined, channel: 'app', patient_age_group: 'unknown',
+    });
+  });
+  it('passes the chosen age group through', () => {
+    expect(buildSosBody({ ...base, age: 'elderly', notes: 'gate 2', address: 'Adyar' })).toMatchObject({
+      patient_age_group: 'elderly', notes: 'gate 2', address: 'Adyar',
+    });
+  });
+  it('offers four age choices ending with "Not sure"', () => {
+    expect(AGE_OPTIONS.map((o) => o.value)).toEqual(['child', 'adult', 'senior', 'unknown']);
   });
 });

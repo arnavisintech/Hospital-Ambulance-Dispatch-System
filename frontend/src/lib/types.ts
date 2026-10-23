@@ -71,6 +71,7 @@ export interface CreateRequestBody {
   caller_name?: string;
   caller_phone?: string;
   channel?: string;
+  patient_age_group?: 'child' | 'adult' | 'senior' | 'elderly' | 'unknown';
 }
 
 /* ---------------------------------------------------------------- v2 tracking (API_CONTRACT_V2 §2) */

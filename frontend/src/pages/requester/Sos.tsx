@@ -4,7 +4,8 @@ import type L from 'leaflet';
 import { ChevronRight, LocateFixed, MapPin, PencilLine, Phone, Search, Siren, WifiOff } from 'lucide-react';
 import { MobileAppLayout } from '../../components/layout/MobileAppLayout';
 import { MapCanvas } from '../../components/map';
-import { Button, Textarea, useToast } from '../../components/ui';
+import { Button, SegmentedControl, Textarea, useToast } from '../../components/ui';
+import { AGE_OPTIONS, buildSosBody, type AgeGroup } from './trip';
 import { notifyQueueChanged } from '../../components/QueueBanner';
 import { useAsync } from '../../hooks/useAsync';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
@@ -47,6 +48,7 @@ export default function Sos() {
   const [type, setType] = useState<string>('other');
   const [severity, setSeverity] = useState(DEFAULT_SEVERITY);
   const [notes, setNotes] = useState('');
+  const [age, setAge] = useState<AgeGroup>('unknown');
   const [showNote, setShowNote] = useState(false);
   const [busy, setBusy] = useState(false);
   const [queued, setQueued] = useState(false);
@@ -111,10 +113,9 @@ export default function Sos() {
 
   const submit = async () => {
     if (!ready) { setSource('pin'); return; } // first tap confirms the pin when GPS is unavailable
-    const body: CreateRequestBody = {
-      client_uuid: uuid.current, lat: center[0], lng: center[1], address: addressText,
-      incident_type: type, severity, notes: notes.trim() || undefined, channel: 'app',
-    };
+    const body: CreateRequestBody = buildSosBody({
+      uuid: uuid.current, center: [center[0], center[1]], address: addressText, type, severity, notes, age,
+    });
     setBusy(true);
     try {
       const r = await post<RequestOut>('/requests', body);
@@ -254,6 +255,12 @@ export default function Sos() {
           <p id="sev-desc" className="mt-2 text-sm text-ink-500" aria-live="polite">
             <span className={cn('font-semibold', toneClasses(sevMeta.tone).text)}>{sevMeta.label}:</span> {sevMeta.description}
           </p>
+        </fieldset>
+
+        <fieldset>
+          <legend className="mb-3 text-base font-bold text-ink-900">Patient age <span className="font-medium text-ink-500">(optional)</span></legend>
+          <SegmentedControl ariaLabel="Patient age" fullWidth items={AGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            value={age} onChange={(v) => setAge(v as AgeGroup)} />
         </fieldset>
 
         {showNote ? (

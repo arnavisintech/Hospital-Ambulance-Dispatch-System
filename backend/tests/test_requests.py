@@ -1,3 +1,4 @@
+import pytest
 from sqlalchemy import select
 
 from app.db import SessionLocal
@@ -85,3 +86,32 @@ def test_stranger_hospital_staff_cannot_view(client, world):
     staff = world.user(Role.hospital_staff, hospital_id=b["hospital"])
     rid = sos(client, world.user()["h"]).json()["id"]
     assert client.get(f"/api/requests/{rid}", headers=staff["h"]).status_code == 403
+
+
+# ---------------------------------------------------------------- Task 13: patient age group (optional)
+@pytest.mark.parametrize("age", ["child", "adult", "senior", "elderly", "unknown"])
+def test_age_group_round_trip(client, world, age):
+    u = world.user(Role.requester)
+    r = sos(client, u["h"], patient_age_group=age)
+    assert r.status_code == 201 and r.json()["patient_age_group"] == age
+
+
+def test_age_group_defaults_and_validates(client, world):
+    u = world.user(Role.requester)
+    assert sos(client, u["h"]).json()["patient_age_group"] == "unknown"
+    assert sos(client, u["h"], patient_age_group="toddler").status_code == 422
+
+
+def test_outcome_feeds_age_group_into_history(client, world):
+    from app.db import SessionLocal
+    from app.models import EmergencyRequest, IncidentHistory, TripRecord
+    from app.services import analytics
+    from sqlalchemy import select
+    u = world.user(Role.requester)
+    rid = sos(client, u["h"], patient_age_group="elderly").json()["id"]
+    with SessionLocal() as db:
+        req = db.get(EmergencyRequest, rid)
+        analytics.record_outcome(db, req, TripRecord(request_id=rid, response_time_seconds=420))
+        db.commit()
+        row = db.execute(select(IncidentHistory).where(IncidentHistory.source == "live")).scalars().one()
+    assert row.patient_age_group == "elderly"

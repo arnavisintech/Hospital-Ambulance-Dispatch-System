@@ -4,7 +4,7 @@
  */
 import { fmtArrival, fmtEta } from '../../lib/format';
 import { requestStatusMeta, type Tone } from '../../lib/status';
-import type { LatLng, TimelineEvent, TrackingRoute, WsMessage } from '../../lib/types';
+import type { CreateRequestBody, LatLng, TimelineEvent, TrackingRoute, WsMessage } from '../../lib/types';
 
 /* ------------------------------------------------------------------ phase of the screen */
 
@@ -177,3 +177,26 @@ export const PAY_METHODS = [
   { value: 'card', label: 'Card' },
   { value: 'cash', label: 'Cash' },
 ] as const;
+
+/* ------------------------------------------------------------------ SOS body */
+
+export type AgeGroup = 'child' | 'adult' | 'senior' | 'elderly' | 'unknown';
+
+/** Optional "Patient age" choices on the SOS screen. Seniors need more care, so dispatch staff and the demand
+ *  model use it; it never changes which ambulance or hospital is chosen. */
+export const AGE_OPTIONS: { value: AgeGroup; label: string }[] = [
+  { value: 'child', label: 'Child' },
+  { value: 'adult', label: 'Adult' },
+  { value: 'senior', label: 'Senior 60+' },
+  { value: 'unknown', label: 'Not sure' },
+];
+
+export function buildSosBody(p: {
+  uuid: string; center: [number, number]; address?: string; type: string; severity: number; notes: string; age?: AgeGroup;
+}): CreateRequestBody {
+  return {
+    client_uuid: p.uuid, lat: p.center[0], lng: p.center[1], address: p.address,
+    incident_type: p.type, severity: p.severity, notes: p.notes.trim() || undefined, channel: 'app',
+    patient_age_group: p.age ?? 'unknown',
+  };
+}

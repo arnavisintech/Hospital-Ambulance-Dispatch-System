@@ -152,6 +152,7 @@ def _dispatch_one(db: Session, req: EmergencyRequest, started: float, silent_if_
     timeout = trips.get_setting(db, "crew_ack_timeout_s", get_settings().crew_ack_timeout_s)
     events.publish(f"crew:{amb.id}", "dispatch.offer", {
         "request_id": req.id, "incident_type": req.incident_type.value, "severity": req.severity,
+        "patient_age_group": req.patient_age_group or "unknown",
         "lat": req.lat, "lng": req.lng, "address": req.address, "eta_seconds": req.eta_seconds,
         "ack_timeout_s": timeout, "destination_hospital_id": req.destination_hospital_id})
     trips.publish_status(req)

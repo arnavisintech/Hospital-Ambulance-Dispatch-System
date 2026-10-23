@@ -119,7 +119,8 @@ def record_outcome(db: Session, request, trip) -> None:
     db.add(IncidentHistory(
         ts=ts, lat=request.lat, lng=request.lng, zone_id=zone_of(request.lat, request.lng), incident_type=itype,
         severity=int(request.severity or 3), traffic_index=round(traffic, 3),
-        response_time_seconds=getattr(trip, "response_time_seconds", None), source="live"))
+        response_time_seconds=getattr(trip, "response_time_seconds", None), source="live",
+        patient_age_group=getattr(request, "patient_age_group", None) or "unknown"))
 
 
 # ---------------------------------------------------------------- training

@@ -98,7 +98,7 @@ def request_out(db: Session, req: EmergencyRequest, hide_phone: bool = False) ->
         attempts.append({"ambulance_id": a.ambulance_id, "registration_number": ab.registration_number if ab else None,
                          "rank": a.rank, "status": a.status.value, "eta_seconds": a.eta_seconds})
     return {"id": req.id, "status": req.status.value, "incident_type": req.incident_type.value,
-            "severity": req.severity, "lat": req.lat, "lng": req.lng, "address": req.address, "notes": req.notes,
+            "severity": req.severity, "patient_age_group": req.patient_age_group or "unknown", "lat": req.lat, "lng": req.lng, "address": req.address, "notes": req.notes,
             "channel": req.channel, "requester_id": req.requester_id, "caller_name": req.caller_name,
             "caller_phone": None if hide_phone else req.caller_phone,
             "ambulance": {"id": amb.id, "registration_number": amb.registration_number, "kind": amb.kind} if amb else None,

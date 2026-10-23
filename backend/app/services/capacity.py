@@ -227,6 +227,7 @@ def announce_destination(db: Session, req: EmergencyRequest, h: Hospital, extra:
         events.publish(f"crew:{req.ambulance_id}", "destination.confirmed", data)
     events.publish(f"hospital:{h.id}", "hospital.incoming",
                    {"request_id": req.id, "incident_type": req.incident_type.value, "severity": req.severity,
+                    "patient_age_group": req.patient_age_group or "unknown",
                     "eta_seconds": req.eta_seconds, "ambulance_id": req.ambulance_id})
 
 

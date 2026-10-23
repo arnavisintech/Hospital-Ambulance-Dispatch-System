@@ -1,4 +1,6 @@
 """Emergency request intake and tracking (UC-1, FR1, FR6)."""
+from typing import Literal
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -22,6 +24,7 @@ class RequestIn(BaseModel):
     address: str | None = Field(default=None, max_length=255)
     incident_type: IncidentType = IncidentType.other
     severity: int = Field(default=3, ge=1, le=5)
+    patient_age_group: Literal["child", "adult", "senior", "elderly", "unknown"] = "unknown"
     notes: str | None = Field(default=None, max_length=2000)
     caller_name: str | None = Field(default=None, max_length=120)
     caller_phone: str | None = Field(default=None, max_length=20)
@@ -55,7 +58,8 @@ def _create(body: RequestIn, user: User, channel: str, db: Session, bg: Backgrou
         caller_name=body.caller_name or (user.name if is_requester else None),
         caller_phone=body.caller_phone or (user.phone if is_requester else None),
         channel=channel, lat=body.lat, lng=body.lng, address=body.address, incident_type=body.incident_type,
-        severity=body.severity, notes=body.notes, status=RequestStatus.received)
+        severity=body.severity, patient_age_group=body.patient_age_group, notes=body.notes,
+        status=RequestStatus.received)
     db.add(req)
     try:
         db.flush()
