@@ -54,8 +54,9 @@ def _attempted_ids(db: Session, request_id: int) -> set[int]:
 
 
 def rank_candidates(db: Session, req: EmergencyRequest, exclude: set[int] | None = None,
-                    now: datetime | None = None) -> list[dict]:
-    """Eligible ambulances ranked by effective road-time ETA (FR4). Pure read; no side effects."""
+                    now: datetime | None = None, quick: bool = False) -> list[dict]:
+    """Eligible ambulances ranked by effective road-time ETA (FR4). Pure read; no side effects.
+    quick=True uses the offline road-distance estimate instead of the router (advisory figures only)."""
     s = get_settings()
     now = now or utcnow()
     exclude = exclude or set()
@@ -77,7 +78,10 @@ def rank_candidates(db: Session, req: EmergencyRequest, exclude: set[int] | None
             continue
         eligible.append((a, km))
     # ONE routing call for all candidates (OSRM /table: sources = ambulances, destination = patient) -- NFR1
-    etas = routing.eta_many([(a.lat, a.lng) for a, _km in eligible], (req.lat, req.lng))
+    if quick:
+        etas = [routing.quick_eta((a.lat, a.lng), (req.lat, req.lng)) for a, _km in eligible]
+    else:
+        etas = routing.eta_many([(a.lat, a.lng) for a, _km in eligible], (req.lat, req.lng))
     out = []
     for (a, km), eta in zip(eligible, etas):
         eff = eta

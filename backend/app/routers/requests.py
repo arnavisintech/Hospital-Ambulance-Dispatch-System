@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from .. import audit, events, ratelimit
 from ..db import get_db
 from ..deps import current_user, require_roles
+from ..geo import in_city
 from ..models import EmergencyRequest, IncidentType, RequestStatus, Role, TripRecord, User, utcnow
 from ..services import dispatch, sharing, tracking as tracking_svc, trips
 
@@ -48,6 +49,8 @@ def _create(body: RequestIn, user: User, channel: str, db: Session, bg: Backgrou
                 raise HTTPException(409, "client_uuid already used")
             response.status_code = 200
             return trips.request_out(db, existing)
+    if not in_city(body.lat, body.lng):
+        raise HTTPException(422, "This location is outside the HADS service area; call 108 for an ambulance")
     is_requester = user.role == Role.requester
     if is_requester:  # idempotent retries returned above and never count
         ok, retry = SOS_LIMIT.hit(f"sos:{user.id}")
@@ -81,9 +84,10 @@ def _create(body: RequestIn, user: User, channel: str, db: Session, bg: Backgrou
 
 
 def _estimated_wait(db: Session, req: EmergencyRequest) -> int | None:
-    """UC-1 step 6: road-time ETA of the best ambulance free right now (None when none is). Advisory only."""
+    """UC-1 step 6: estimated ETA of the best ambulance free right now (None when none is). Advisory only, and
+    computed offline so the receipt never waits on the router (dispatch makes the one routed ranking call)."""
     try:
-        best = dispatch.rank_candidates(db, req)[:1]
+        best = dispatch.rank_candidates(db, req, quick=True)[:1]
     except Exception:  # noqa: BLE001 - the receipt must never fail over an estimate
         return None
     return int(best[0]["eta_seconds"]) if best else None

@@ -81,6 +81,11 @@ def _haversine_eta(a: Point, b: Point, hour: int | None) -> int:
     return max(1, int(round(km / s.avg_speed_kmph * 3600 * traffic_factor(hour))))
 
 
+def quick_eta(a: Point, b: Point, hour: int | None = None) -> int:
+    """Offline estimate (road-distance factor x traffic): no network call, for advisory numbers only."""
+    return _haversine_eta(a, b, hour)
+
+
 def _haversine_route(a: Point, b: Point, hour: int | None) -> dict:
     total_km = road_km(a, b)
     eta = _haversine_eta(a, b, hour)
