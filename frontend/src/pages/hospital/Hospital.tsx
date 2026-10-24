@@ -19,6 +19,7 @@ import { ageMin, fmtAge, fmtClock, fmtClockTimer, fmtDuration, fmtPhone, fmtRela
 import { humanize, incidentMeta, toneClasses, type Tone } from '../../lib/status';
 import type { HospitalBrief, RequestOut, WsMessage } from '../../lib/types';
 import { playChime, useNow, useSoundPref } from '../controller/live';
+import { AreaDemandPanel } from './AreaDemandPanel';
 import { FleetPanel } from './FleetPanel';
 import { PaymentsDue } from './PaymentsDue';
 import {
@@ -210,6 +211,7 @@ function HospitalDesk({ hid }: { hid: number }) {
             onRevert={(prev) => hosp.setData(prev)}
           />
           <FleetPanel hid={hid} />
+          <AreaDemandPanel hid={hid} />
           <HandoverList state={handovers} now={now} />
           <PaymentsDue />
         </div>

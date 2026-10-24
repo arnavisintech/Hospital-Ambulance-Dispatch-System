@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from .. import audit
 from ..db import get_db
 from ..deps import require_roles
-from ..models import Role, User
-from ..services import analytics as svc
+from ..models import Hospital, Role, User
+from ..services import analytics as svc, trips
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -33,3 +33,15 @@ def retrain(db: Session = Depends(get_db), user: User = Depends(require_roles(Ro
 @router.get("/model")
 def model(db: Session = Depends(get_db), _: User = Depends(require_roles(Role.controller, Role.admin, Role.authority))):
     return svc.model_info(db)
+
+
+@router.get("/hospitals/{hospital_id}/area")
+def hospital_area(hospital_id: int, radius_km: float = Query(5.0, gt=0, le=25), hour: int | None = Query(None, ge=0, le=23),
+                  db: Session = Depends(get_db), user: User = Depends(require_roles(Role.hospital_staff, Role.admin))):
+    """Demand forecast around a partner hospital (hospital analytics): its own staff, or an admin."""
+    if user.role == Role.hospital_staff and trips.user_hospital_id(db, user) != hospital_id:
+        raise HTTPException(403, "Not permitted for this hospital")
+    h = db.get(Hospital, hospital_id)
+    if h is None:
+        raise HTTPException(404, "Hospital not found")
+    return {"hospital_id": hospital_id, **svc.area_demand(db, h.lat, h.lng, radius_km, hour)}

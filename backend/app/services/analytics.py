@@ -111,6 +111,24 @@ def risk_map(db: Session, hour: int | None = None) -> dict:
             "demographics_source": demographics.summary(db)["source"], "zones": zones}
 
 
+def area_demand(db: Session, lat: float, lng: float, radius_km: float, hour: int | None = None) -> dict:
+    """Predicted demand in the zones around a point (a hospital's catchment): this hour's zones, busiest first,
+    and the area's expected calls for every hour of the day. Aggregates only; no patient data."""
+    from ..geo import haversine_km
+    now = risk_map(db, hour)
+    near = []
+    for z in now["zones"]:
+        d = haversine_km(lat, lng, z["lat"], z["lng"])
+        if d <= radius_km:
+            near.append({**z, "distance_km": round(d, 2)})
+    near.sort(key=lambda z: (-z["expected_demand"], z["distance_km"]))
+    ids = {z["zone_id"] for z in near}
+    by_hour = [{"hour": h, "expected_demand": round(sum(v for k, v in _hour_data(db, h)["demand"].items() if k in ids), 4)}
+               for h in range(24)]
+    return {"hour": now["hour"], "radius_km": radius_km, "model_version": now["model_version"],
+            "demographics_source": now["demographics_source"], "zones": near, "by_hour": by_hour}
+
+
 # ---------------------------------------------------------------- FR8 feedback
 def record_outcome(db: Session, request, trip) -> None:
     """FR8: store a completed trip as a live IncidentHistory row (caller commits). Idempotent per request."""

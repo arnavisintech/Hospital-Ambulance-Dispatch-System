@@ -193,3 +193,25 @@ def test_cold_start_zone_gets_demand_from_demographics():
         demand = {z: sum(r.expected_demand for r in db.execute(select(ZoneRisk).where(ZoneRisk.zone_id == z)).scalars())
                   for z in (small, big)}
     assert demand[small] > 0 and demand[big] > 2 * demand[small]
+
+
+def test_hospital_area_demand_view(env):
+    """Hospitals see predicted demand around them (the report's hospital analytics), never another hospital's."""
+    from sqlalchemy import select
+
+    from app.models import HospitalStaffProfile, User
+    with env.db() as db:
+        staff = db.execute(select(User).where(User.email == "staff1@hads.in")).scalar_one()
+        hid = db.get(HospitalStaffProfile, staff.id).hospital_id
+    c, h = env.client, env.as_("staff1@hads.in")
+    r = c.get(f"/api/analytics/hospitals/{hid}/area?radius_km=5&hour=9", headers=h)
+    assert r.status_code == 200
+    j = r.json()
+    assert j["hospital_id"] == hid and j["hour"] == 9 and j["radius_km"] == 5
+    assert j["zones"] and all(z["distance_km"] <= 5.0 for z in j["zones"])
+    assert [z["expected_demand"] for z in j["zones"]] == sorted((z["expected_demand"] for z in j["zones"]), reverse=True)
+    assert {"zone_label", "households", "senior_share", "risk"} <= set(j["zones"][0])
+    assert len(j["by_hour"]) == 24 and all(x["expected_demand"] >= 0 for x in j["by_hour"])
+    assert c.get(f"/api/analytics/hospitals/{hid + 1}/area", headers=h).status_code == 403
+    assert c.get(f"/api/analytics/hospitals/{hid}/area", headers=env.as_("admin@hads.in")).status_code == 200
+    assert c.get(f"/api/analytics/hospitals/{hid}/area", headers=env.as_("user@hads.in")).status_code == 403
