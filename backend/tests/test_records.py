@@ -3,7 +3,7 @@ UR4: export a station's trip and billing history as a PDF."""
 from datetime import timedelta
 
 from app.db import SessionLocal
-from app.models import BillingRecord, EmergencyRequest, IncidentType, PaymentStatus, RequestStatus, Role, TripRecord, utcnow
+from app.models import Ambulance, BillingRecord, EmergencyRequest, IncidentType, PaymentStatus, RequestStatus, Role, TripRecord, utcnow
 
 
 def _trip(world_ids, *, amb, hosp, days_ago, incident=IncidentType.trauma, amount=None):
@@ -14,7 +14,8 @@ def _trip(world_ids, *, amb, hosp, days_ago, incident=IncidentType.trauma, amoun
                                caller_name="Secret Caller", caller_phone="9999999999")
         db.add(req)
         db.flush()
-        trip = TripRecord(request_id=req.id, ambulance_id=amb, destination_hospital_id=hosp, dispatched_at=at,
+        station = db.get(Ambulance, amb).station_id
+        trip = TripRecord(request_id=req.id, ambulance_id=amb, station_id=station, destination_hospital_id=hosp, dispatched_at=at,
                           handover_time=at + timedelta(minutes=35), response_time_seconds=480, distance_km=6.5)
         db.add(trip)
         db.flush()
@@ -30,9 +31,10 @@ def _scene(world):
     h, other = world.hospital(), world.hospital()
     st1, st2 = world.station(h), world.station(h)
     a1, a2 = world.ambulance(st1), world.ambulance(st2, lat=13.09, lng=80.28)
+    s_a1 = a1
     oa = world.ambulance(world.station(other), lat=13.07, lng=80.26)
     ids: list[int] = []
-    s = {"h": h, "other": other, "st1": st1, "st2": st2, "ids": ids,
+    s = {"h": h, "other": other, "st1": st1, "st2": st2, "ids": ids, "a1": s_a1,
          "staff": world.user(Role.hospital_staff, hospital_id=h), "stranger": world.user(Role.hospital_staff, hospital_id=other)}
     s["old"] = _trip(ids, amb=a1, hosp=h, days_ago=20, amount=662.5)
     s["recent"] = _trip(ids, amb=a2, hosp=h, days_ago=2, incident=IncidentType.cardiac, amount=900.0)
@@ -70,6 +72,32 @@ def test_records_are_scoped_to_the_hospital(client, world):
     assert client.get(f"/api/hospitals/{s['h']}/records", headers=world.user(Role.admin)["h"]).status_code == 200
     assert client.get(f"/api/hospitals/{s['h']}/records", params={"station_id": s["st1"]},
                       headers=s["stranger"]["h"]).status_code == 403
+
+
+def test_trips_stay_with_the_hospital_that_ran_them_after_a_unit_moves(client, world):
+    """A unit rebalanced to another hospital's station must not carry its past trips (and billing) with it."""
+    s = _scene(world)
+    other_station = world.station(s["other"])
+    with SessionLocal() as db:
+        db.get(Ambulance, s["a1"]).station_id = other_station
+        db.commit()
+    mine = {r["request_id"] for r in client.get(f"/api/hospitals/{s['h']}/records", headers=s["staff"]["h"]).json()["items"]}
+    assert s["old"] in mine
+    by_station = client.get(f"/api/hospitals/{s['h']}/records", params={"station_id": s["st1"]}, headers=s["staff"]["h"]).json()
+    assert [r["request_id"] for r in by_station["items"]] == [s["old"]]
+    theirs = {r["request_id"] for r in client.get(f"/api/hospitals/{s['other']}/records", headers=s["stranger"]["h"]).json()["items"]}
+    assert s["old"] not in theirs
+
+
+def test_new_trip_records_remember_their_station(client, world):
+    from app.services import trips
+    st = world.station(world.hospital())
+    amb = world.ambulance(st)
+    with SessionLocal() as db:
+        req = EmergencyRequest(lat=13.08, lng=80.27, ambulance_id=amb)
+        db.add(req)
+        db.flush()
+        assert trips.get_or_create_trip(db, req).station_id == st
 
 
 def test_station_history_pdf(client, world):

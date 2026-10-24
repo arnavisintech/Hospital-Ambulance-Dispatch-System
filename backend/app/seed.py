@@ -194,7 +194,7 @@ def _historical_trips(db, rng, now, hospitals, ambulances, requester, df, count)
         if cancelled:
             continue
         trip = TripRecord(
-            request_id=req.id, ambulance_id=amb.id, destination_hospital_id=hosp.id,
+            request_id=req.id, ambulance_id=amb.id, station_id=amb.station_id, destination_hospital_id=hosp.id,
             dispatched_at=req.dispatched_at, arrived_scene_at=created + timedelta(seconds=resp_s), arrived_hospital_at=t_hosp,
             handover_time=t_hand, response_time_seconds=resp_s, distance_km=round(drive_km + to_hosp_km, 2),
             summary={"redirect_avoided": bool(rng.random() < 0.22), "seeded": True})

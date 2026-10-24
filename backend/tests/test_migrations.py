@@ -109,3 +109,33 @@ def test_api_refuses_to_start_on_an_unmigrated_database(monkeypatch):
     with pytest.raises(RuntimeError, match="migrate.py"):
         with TestClient(main.app):
             pass
+
+
+def test_0002_keeps_existing_trips_and_backfills_their_station(url):
+    """Upgrading a database that already holds trips and bills must keep every row and fill trip_records.station_id."""
+    cfg = _cfg(url)
+    command.upgrade(cfg, "0001")
+    eng = create_engine(url)
+    try:
+        with eng.begin() as conn:
+            conn.execute(text("INSERT INTO hospitals (id, name, address, lat, lng, total_beds, available_beds, total_icu, available_icu, "
+                              "specialists, revenue_share_pct, partner_verified) VALUES (1, 'H', '', 13.0, 80.2, 10, 5, 2, 1, '{}', 70, 1)"))
+            conn.execute(text("INSERT INTO dark_stations (id, hospital_id, name, address, lat, lng, is_active) VALUES (7, 1, 'S', '', 13.0, 80.2, 1)"))
+            conn.execute(text("INSERT INTO ambulances (id, station_id, registration_number, kind, status, staffed) "
+                              "VALUES (3, 7, 'TN01AB0001', 'BLS', 'available', 1)"))
+            conn.execute(text("INSERT INTO emergency_requests (id, channel, lat, lng, incident_type, severity, patient_age_group, "
+                              "status, created_at) VALUES (11, 'app', 13.0, 80.2, 'other', 3, 'unknown', 'completed', '2026-10-01 10:00:00')"))
+            conn.execute(text("INSERT INTO trip_records (id, request_id, ambulance_id, closed_manually, summary) "
+                              "VALUES (5, 11, 3, 0, '{}')"))
+            conn.execute(text("INSERT INTO billing_records (id, trip_id, base_fare, distance_charge, surcharge, amount, "
+                              "hospital_share, platform_share, payment_status, created_at) "
+                              "VALUES (9, 5, 500, 0, 0, 500, 350, 150, 'pending', '2026-10-01 11:00:00')"))
+        command.upgrade(cfg, "head")
+        with eng.connect() as conn:
+            assert conn.execute(text("SELECT station_id FROM trip_records WHERE id = 5")).scalar() == 7
+            assert conn.execute(text("SELECT count(*) FROM billing_records WHERE trip_id = 5")).scalar() == 1
+        command.downgrade(cfg, "0001")
+        with eng.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM billing_records")).scalar() == 1
+    finally:
+        eng.dispose()

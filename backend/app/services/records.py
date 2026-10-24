@@ -2,7 +2,8 @@
 
 A hospital's records are the trips its own ambulances ran plus the patients delivered to it. Caller identity and
 contact details never appear here: hospitals identify a case by its request number.
-A trip's station is the station its ambulance belongs to now (TripRecord keeps the ambulance, not the station).
+A trip belongs to the station its ambulance had when it ran (TripRecord.station_id): a unit moved to another
+station or hospital never carries its history along.
 """
 from __future__ import annotations
 
@@ -32,10 +33,10 @@ def _base(hospital_id: int):
     return (select(TripRecord, EmergencyRequest, Ambulance, DarkStation, Hospital, BillingRecord)
             .join(EmergencyRequest, EmergencyRequest.id == TripRecord.request_id)
             .outerjoin(Ambulance, Ambulance.id == TripRecord.ambulance_id)
-            .outerjoin(DarkStation, DarkStation.id == Ambulance.station_id)
+            .outerjoin(DarkStation, DarkStation.id == TripRecord.station_id)
             .outerjoin(Hospital, Hospital.id == TripRecord.destination_hospital_id)
             .outerjoin(BillingRecord, BillingRecord.trip_id == TripRecord.id)
-            .where(or_(TripRecord.destination_hospital_id == hospital_id, Ambulance.station_id.in_(own_stations))))
+            .where(or_(TripRecord.destination_hospital_id == hospital_id, TripRecord.station_id.in_(own_stations))))
 
 
 def _filtered(hospital_id: int, date_from: date | None, date_to: date | None, station_id: int | None,
@@ -46,7 +47,7 @@ def _filtered(hospital_id: int, date_from: date | None, date_to: date | None, st
     if date_to:
         q = q.where(EmergencyRequest.created_at < _day_start(date_to + timedelta(days=1)))
     if station_id is not None:
-        q = q.where(Ambulance.station_id == station_id)
+        q = q.where(TripRecord.station_id == station_id)
     if request_id is not None:
         q = q.where(EmergencyRequest.id == request_id)
     return q

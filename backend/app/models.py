@@ -248,6 +248,8 @@ class TripRecord(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(ForeignKey("emergency_requests.id"), unique=True)
     ambulance_id: Mapped[int | None] = mapped_column(ForeignKey("ambulances.id"), nullable=True)
+    # The ambulance's station when the trip ran: units move between stations (and hospitals), their history doesn't.
+    station_id: Mapped[int | None] = mapped_column(ForeignKey("dark_stations.id"), nullable=True, index=True)
     destination_hospital_id: Mapped[int | None] = mapped_column(ForeignKey("hospitals.id"), nullable=True)
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     arrived_scene_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

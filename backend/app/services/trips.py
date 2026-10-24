@@ -244,7 +244,8 @@ def latest_path(db: Session, amb_id: int, limit: int = 50) -> list[list[float]]:
 def get_or_create_trip(db: Session, req: EmergencyRequest) -> TripRecord:
     trip = db.execute(select(TripRecord).where(TripRecord.request_id == req.id)).scalar_one_or_none()
     if trip is None:
-        trip = TripRecord(request_id=req.id, ambulance_id=req.ambulance_id,
+        amb = db.get(Ambulance, req.ambulance_id) if req.ambulance_id else None
+        trip = TripRecord(request_id=req.id, ambulance_id=req.ambulance_id, station_id=amb.station_id if amb else None,
                           destination_hospital_id=req.destination_hospital_id,
                           dispatched_at=req.dispatched_at, summary={})
         db.add(trip)
