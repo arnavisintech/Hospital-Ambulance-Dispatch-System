@@ -7,6 +7,7 @@ import { get, put } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { fmtMoney } from '../../lib/format';
 import { changedSettings, settingDef, SETTING_DEFS, SETTING_GROUPS, validateSetting, type SettingGroup } from './shared/logic';
+import { ApiClientsCard } from './shared/ApiClientsCard';
 import { DemographicsCard } from './shared/DemographicsCard';
 import { useUnsavedGuard } from './shared/useUnsavedGuard';
 
@@ -148,6 +149,7 @@ export default function Settings() {
         </form>
       )}
       <div className="mt-6"><DemographicsCard /></div>
+      <div className="mt-6"><ApiClientsCard /></div>
       {guard}
     </div>
   );
