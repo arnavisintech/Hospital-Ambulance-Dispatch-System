@@ -32,6 +32,7 @@ export const CONSOLE_NAV: Partial<Record<Role, NavItem[]>> = {
   ],
   hospital_staff: [
     { to: '/hospital', label: 'Incoming', icon: ClipboardList },
+    { to: '/hospital/records', label: 'Records', icon: History },
   ],
 };
 

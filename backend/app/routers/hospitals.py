@@ -1,5 +1,8 @@
 """Hospital capacity and handover (UC-3, UC-4). Staff may only act on their own hospital (STRQ2)."""
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,7 +12,7 @@ from ..db import get_db
 from ..deps import current_user, require_roles
 from ..models import (Ambulance, AmbulanceStatus, AuditLog, DarkStation, EmergencyRequest, Hospital, RequestStatus, Role,
                       TripRecord, User, utcnow)
-from ..services import capacity, dispatch, notify, trips
+from ..services import capacity, dispatch, notify, records, trips
 
 router = APIRouter(prefix="/api/hospitals", tags=["hospitals"])
 RS = RequestStatus
@@ -224,3 +227,44 @@ def update_ambulance(hospital_id: int, ambulance_id: int, body: FleetPatch,
         events.publish("controller", "ambulance.status", {"ambulance_id": amb.id, "status": amb.status.value,
                                                           "staffed": amb.staffed})
     return _ambulance_out(amb, utcnow())
+
+
+# ------------------------------------------------------------------ records (UR2) and station history PDF (UR4)
+def _own_station(db: Session, hospital_id: int, station_id: int) -> DarkStation:
+    st = db.get(DarkStation, station_id)
+    if st is None or st.hospital_id != hospital_id:
+        raise HTTPException(404, "Station not found at this hospital")
+    return st
+
+
+@router.get("/{hospital_id}/records")
+def search_records(hospital_id: int, date_from: date | None = None, date_to: date | None = None,
+                   station_id: int | None = None, request_id: int | None = None,
+                   limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
+                   user: User = Depends(require_roles(Role.hospital_staff, Role.admin)), db: Session = Depends(get_db)):
+    """Past trips of this hospital's fleet and patients delivered here, newest first (no caller details)."""
+    _own_staff(db, user, hospital_id, allow_admin=True)
+    _hospital(db, hospital_id)
+    if station_id is not None:
+        _own_station(db, hospital_id, station_id)
+    return records.search(db, hospital_id, date_from=date_from, date_to=date_to, station_id=station_id,
+                          request_id=request_id, limit=limit, offset=offset)
+
+
+@router.get("/{hospital_id}/stations/{station_id}/history.pdf")
+def station_history_pdf(hospital_id: int, station_id: int, date_from: date | None = None, date_to: date | None = None,
+                        user: User = Depends(require_roles(Role.hospital_staff, Role.admin)), db: Session = Depends(get_db)):
+    """A station's trip and billing history as a PDF (UR4). Audited: it is an export of operational records."""
+    _own_staff(db, user, hospital_id, allow_admin=True)
+    h = _hospital(db, hospital_id)
+    st = _own_station(db, hospital_id, station_id)
+    rows = records.station_rows(db, hospital_id, station_id, date_from, date_to)
+    period = f"{date_from or 'start'} to {date_to or 'today'}"
+    now = utcnow().astimezone(records.IST)
+    pdf = records.station_history_pdf(st.name, h.name, period, rows, generated_at=now.strftime("%Y-%m-%d %H:%M IST"))
+    audit.log(db, "records.export_pdf", "station", st.id, user.id,
+              {"hospital_id": hospital_id, "rows": len(rows), "date_from": str(date_from) if date_from else None,
+               "date_to": str(date_to) if date_to else None})
+    db.commit()
+    name = f"hads-station-{st.id}-{now:%Y%m%d}.pdf"
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})

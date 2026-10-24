@@ -14,5 +14,6 @@ scikit-learn>=1.5
 joblib>=1.4
 pytest==8.3.4
 alembic==1.14.0
+fpdf2==2.8.9
 python-multipart==0.0.20
 cryptography==46.0.3

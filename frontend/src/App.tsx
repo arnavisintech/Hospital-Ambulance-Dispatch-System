@@ -20,6 +20,7 @@ const Account = lazy(() => import('./pages/requester/Account'));
 const Crew = lazy(() => import('./pages/crew/Crew'));
 const Controller = lazy(() => import('./pages/controller/Controller'));
 const Hospital = lazy(() => import('./pages/hospital/Hospital'));
+const HospitalRecords = lazy(() => import('./pages/hospital/Records'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const Onboarding = lazy(() => import('./pages/admin/Onboarding'));
 const Users = lazy(() => import('./pages/admin/Users'));
@@ -78,6 +79,7 @@ export default function App() {
         <Route element={<RequireRole roles={CONSOLE_ROLES}><ConsoleLayout /></RequireRole>}>
           <Route path="/controller" element={<RequireRole roles={['controller', 'admin']}><Controller /></RequireRole>} />
           <Route path="/hospital" element={<RequireRole roles={['hospital_staff']}><Hospital /></RequireRole>} />
+          <Route path="/hospital/records" element={<RequireRole roles={['hospital_staff']}><HospitalRecords /></RequireRole>} />
           <Route path="/admin" element={<RequireRole roles={['admin']}><AdminDashboard /></RequireRole>} />
           <Route path="/admin/onboarding" element={<RequireRole roles={['admin']}><Onboarding /></RequireRole>} />
           <Route path="/admin/users" element={<RequireRole roles={['admin']}><Users /></RequireRole>} />
