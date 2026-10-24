@@ -70,20 +70,23 @@ class ConcurrencyLimitMiddleware:
     before a slot is taken, and the slot is released when the response starts (FastAPI closes the request's DB session
     before sending). Waiting for a slot is bounded: after `wait_s` the caller gets 503 with Retry-After (the SOS screen
     queues and resends). Buffering is bounded too: per route (JSON calls are small; only the CSV upload is large, the
-    same 6 MB nginx allows), an oversized Content-Length is refused before reading, and all bodies being buffered at
-    once share `buffer_budget` bytes (beyond it: 503). Health probes and websockets are never queued.
+    same 6 MB nginx allows), an oversized Content-Length is refused before reading, and bodies being buffered at once
+    share a byte budget (beyond it: 503). The large-upload route has its own budget, so unauthenticated upload traffic
+    can never use up the budget SOS and other JSON calls depend on (nginx also caps connections per client IP).
+    Health probes and websockets are never queued.
     """
 
     EXEMPT = ("/api/health", "/api/ready")
     MAX_JSON_BODY = 256 * 1024
     UPLOAD_ROUTES = {"/api/admin/demographics/import": 6 * 1024 * 1024}
 
-    def __init__(self, app, limit: int, wait_s: float = 15.0, buffer_budget: int = 64 * 1024 * 1024):
+    def __init__(self, app, limit: int, wait_s: float = 15.0, buffer_budget: int = 64 * 1024 * 1024,
+                 upload_budget: int = 12 * 1024 * 1024):
         self.app = app
         self.limit = limit
         self.wait_s = wait_s
-        self.buffer_budget = buffer_budget
-        self._buffered = 0   # bytes held by in-progress requests' bodies (single event loop per process)
+        self.budget = {"json": buffer_budget, "upload": upload_budget}
+        self._buffered = {"json": 0, "upload": 0}   # bytes held by in-progress bodies, per budget (one event loop)
         self._sems: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()   # one per event loop (tests run several)
 
     def _sem(self) -> asyncio.Semaphore:
@@ -96,6 +99,7 @@ class ConcurrencyLimitMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or not scope["path"].startswith("/api/") or scope["path"] in self.EXEMPT:
             return await self.app(scope, receive, send)
+        kind = "upload" if scope["path"] in self.UPLOAD_ROUTES else "json"
         cap = self.UPLOAD_ROUTES.get(scope["path"], self.MAX_JSON_BODY)
         declared = dict(scope.get("headers") or []).get(b"content-length")
         if declared is not None and declared.isdigit() and int(declared) > cap:
@@ -109,10 +113,10 @@ class ConcurrencyLimitMiddleware:
                     return
                 chunk = message.get("body", b"")
                 held += len(chunk)
-                self._buffered += len(chunk)
+                self._buffered[kind] += len(chunk)
                 if held > cap:
                     return await _plain(send, 413, b'{"detail":"Request body too large"}')
-                if self._buffered > self.buffer_budget:
+                if self._buffered[kind] > self.budget[kind]:
                     return await _plain(send, 503, b'{"detail":"Server busy, retry shortly"}', [(b"retry-after", b"2")])
                 chunks.append(chunk)
                 if not message.get("more_body"):
@@ -121,7 +125,7 @@ class ConcurrencyLimitMiddleware:
             chunks.clear()
             await self._run(scope, body, receive, send)
         finally:
-            self._buffered -= held
+            self._buffered[kind] -= held
 
     async def _run(self, scope, body: bytes, receive, send) -> None:
         replayed = False

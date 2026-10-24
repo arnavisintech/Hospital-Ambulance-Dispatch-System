@@ -293,7 +293,7 @@ def test_admission_caps_total_buffered_bytes():
 
     async def go():
         state = {"bodies": []}
-        mw = ConcurrencyLimitMiddleware(_ok_app(state), limit=4, buffer_budget=1024 * 1024)
+        mw = ConcurrencyLimitMiddleware(_ok_app(state), limit=4, upload_budget=1024 * 1024)
         release = asyncio.Event()
         sent_a, sent_b = [], []
 
@@ -320,4 +320,44 @@ def test_admission_caps_total_buffered_bytes():
         release.set()
         await a
         assert _status(sent_a) == 200
+    asyncio.run(go())
+
+
+def test_upload_route_cannot_use_up_the_json_budget():
+    """Security review: unauthenticated callers could fill the shared buffer budget via the large-upload route and
+    starve SOS calls. Uploads have their own budget; JSON requests still get through."""
+    from app.middleware import ConcurrencyLimitMiddleware
+
+    async def go():
+        state = {"bodies": []}
+        mw = ConcurrencyLimitMiddleware(_ok_app(state), limit=4, buffer_budget=1024 * 1024, upload_budget=1024 * 1024)
+        hold = asyncio.Event()
+
+        def slow_upload():
+            first = []
+
+            async def receive():
+                if not first:
+                    first.append(1)
+                    return {"type": "http.request", "body": b"u" * 600 * 1024, "more_body": True}
+                await hold.wait()
+                return {"type": "http.request", "body": b"", "more_body": False}
+            return receive
+
+        async def send(_m):
+            pass
+        up = {"type": "http", "path": "/api/admin/demographics/import", "method": "POST", "headers": []}
+        uploads = [asyncio.create_task(mw(dict(up), slow_upload(), send)) for _ in range(3)]   # 1.8 MiB > upload budget
+        await asyncio.sleep(0.02)
+        sent = []
+
+        async def send_json(m):
+            sent.append(m)
+
+        async def json_receive():
+            return {"type": "http.request", "body": b"j" * 200 * 1024, "more_body": False}
+        await mw({"type": "http", "path": "/api/requests", "method": "POST", "headers": []}, json_receive, send_json)
+        assert _status(sent) == 200                       # the SOS path is unaffected by the upload pressure
+        hold.set()
+        await asyncio.gather(*uploads)
     asyncio.run(go())
