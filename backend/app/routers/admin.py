@@ -1,5 +1,8 @@
 import secrets
+from datetime import timedelta
 from typing import Literal
+
+import numpy as np
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, EmailStr, Field
@@ -9,9 +12,10 @@ from sqlalchemy.orm import Session
 from .. import audit, demographics
 from ..db import get_db
 from ..deps import require_roles
-from ..models import Ambulance, AmbulanceStatus, ApiClient, DarkStation, Hospital, Role, User, utcnow
+from ..models import (Ambulance, AmbulanceLocation, AmbulanceStatus, ApiClient, DarkStation, EmergencyRequest, Hospital,
+                      Role, User, utcnow)
 from ..security import hash_password
-from ..services import interop, onboarding as ob
+from ..services import analytics, background, interop, onboarding as ob
 from ..services.billing import get_platform_settings
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -322,3 +326,27 @@ def put_settings(body: dict = Body(...), db: Session = Depends(get_db), user: Us
               {k: {"from": old[k], "to": v} for k, v in applied.items()})
     db.commit()
     return get_platform_settings(db)
+
+
+# ------------------------------------------------------------------ system status (operations)
+@router.get("/system")
+def system_status(db: Session = Depends(get_db), _: User = Depends(_admin)):
+    """Last-24 h dispatch latency (NFR1), audit chain, GPS history size, worker heartbeats, model quality."""
+    target_ms = int(get_platform_settings(db)["dispatch_target_s"]) * 1000
+    since = utcnow() - timedelta(hours=24)
+    ms = np.array(db.execute(select(EmergencyRequest.match_duration_ms).where(
+        EmergencyRequest.created_at >= since, EmergencyRequest.match_duration_ms.is_not(None))).scalars().all(),
+        dtype=float)
+    m = analytics.latest_metric(db)
+    return {
+        "dispatch_samples": int(ms.size),
+        "dispatch_p50_ms": round(float(np.percentile(ms, 50)), 1) if ms.size else None,
+        "dispatch_p95_ms": round(float(np.percentile(ms, 95)), 1) if ms.size else None,
+        "dispatch_within_target_pct": round(100.0 * float((ms <= target_ms).mean()), 1) if ms.size else None,
+        "audit_chain": audit.verify_chain(db),
+        "gps_rows": db.scalar(select(func.count(AmbulanceLocation.id))) or 0,
+        "workers": background.worker_ages(), "stale_workers": background.stale_workers(),
+        "model": {"version": m.model_version if m else None, "mae": m.mae if m else None, "r2": m.r2 if m else None,
+                  "senior_demand_ratio": analytics.senior_demand_ratio(db)},
+        "db_dialect": db.get_bind().dialect.name,
+    }

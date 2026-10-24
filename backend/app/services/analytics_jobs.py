@@ -42,7 +42,9 @@ def run_once(force: bool = False) -> dict | None:
 
 
 async def loop() -> None:
+    from .background import beat
     while True:
+        beat("analytics")
         try:
             await asyncio.sleep(interval_seconds())
             res = await asyncio.to_thread(run_once)

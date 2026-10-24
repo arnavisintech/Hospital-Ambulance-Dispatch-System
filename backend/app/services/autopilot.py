@@ -23,14 +23,13 @@ import logging
 import random
 import time
 from dataclasses import dataclass
-from datetime import timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from .. import db as dbmod
 from ..config import get_settings
-from ..models import (Ambulance, AmbulanceLocation, AmbulanceStatus, EmergencyRequest, RequestStatus, utcnow)
+from ..models import (Ambulance, AmbulanceStatus, EmergencyRequest, RequestStatus, utcnow)
 from . import crew_actions, dispatch, legs, trips
 
 log = logging.getLogger("hads.autopilot")
@@ -46,8 +45,6 @@ HOME_RADIUS_M = 80.0
 HEARTBEAT_S = 30.0
 MAX_DT_S = 3.0             # cap a single movement step after a stall so units never teleport
 MIN_SPEED_MPS, MAX_SPEED_MPS = 3.0, 25.0
-PRUNE_EVERY_S = 600.0
-GPS_RETENTION = timedelta(hours=24)
 
 
 @dataclass
@@ -75,7 +72,6 @@ class Autopilot:
         self.session_factory = session_factory
         self.device_grace_s = float(device_grace_s if device_grace_s is not None else s.autopilot_device_grace_s)
         self.units: dict[int, Unit] = {}
-        self._last_prune = None
 
     # ------------------------------------------------------------ main step
     def _session(self):
@@ -104,7 +100,6 @@ class Autopilot:
                     self.units.pop(amb.id, None)
             for gone in set(self.units) - seen:  # went offline / maintenance
                 self.units.pop(gone, None)
-            self._maybe_prune(db, now)
 
     def _step(self, db, amb: Ambulance, req: EmergencyRequest | None, now: float) -> None:
         if crew_actions.device_active(amb.id, self.device_grace_s, now):
@@ -220,17 +215,6 @@ class Autopilot:
             if not fresh:
                 crew_actions.heartbeat(db, amb)
             u.last_beat = now
-
-    def _maybe_prune(self, db, now: float) -> None:
-        if self._last_prune is not None and now - self._last_prune < PRUNE_EVERY_S:
-            return
-        self._last_prune = now
-        try:
-            db.execute(delete(AmbulanceLocation).where(AmbulanceLocation.recorded_at < utcnow() - GPS_RETENTION))
-            db.commit()
-        except Exception:  # noqa: BLE001
-            db.rollback()
-            log.exception("GPS history prune failed")
 
 
 async def loop(tick_s: float = 1.0, autopilot: Autopilot | None = None) -> None:

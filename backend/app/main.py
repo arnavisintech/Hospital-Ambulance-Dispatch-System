@@ -5,11 +5,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from . import models  # noqa: F401  (register tables)
 from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .events import hub
+from .logging_setup import configure_logging
+from .middleware import RequestContextMiddleware
 
 log = logging.getLogger("hads")
 
@@ -24,6 +27,7 @@ ROUTER_MODULES = [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     s = get_settings()
+    configure_logging(s.log_json)
     problems = s.production_problems()
     if problems:
         raise RuntimeError("Refusing to start in production: " + "; ".join(problems))
@@ -63,7 +67,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="HADS - Hospital Ambulance Dispatch System", version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in get_settings().cors_origins.split(",")],
-                   allow_methods=["*"], allow_headers=["*"], allow_credentials=False)
+                   allow_methods=["*"], allow_headers=["*"], allow_credentials=False,
+                   expose_headers=["X-Request-ID", "Content-Disposition"])
+app.add_middleware(RequestContextMiddleware)  # outermost: every response and log line carries the request id
 
 for name in ROUTER_MODULES:
     try:
@@ -76,12 +82,38 @@ for name in ROUTER_MODULES:
     app.include_router(mod.router)
 
 
+def _db_ok() -> bool:
+    from sqlalchemy import text
+    try:
+        with SessionLocal() as db:
+            db.execute(text("select 1"))
+        return True
+    except Exception:  # noqa: BLE001 - reported, never raised
+        log.exception("database health check failed")
+        return False
+
+
 @app.get("/api/health", tags=["system"])
 def health():
-    """Liveness/readiness probe for ALB / ECS health checks."""
-    from sqlalchemy import text
-    with SessionLocal() as db:
-        db.execute(text("select 1"))
-    from .services import routing
-    s = get_settings()
-    return {"status": "ok", "routing": routing.status(), "demo_autopilot": s.demo_autopilot}
+    """Liveness: always 200 while the process serves HTTP; `status` is `degraded` if the DB or a worker is unhealthy."""
+    from .services import background, routing
+    db_ok = _db_ok()
+    stale = background.stale_workers()
+    return {"status": "ok" if db_ok and not stale else "degraded", "db": db_ok,
+            "workers": background.worker_ages(), "stale_workers": stale,
+            "routing": routing.status(), "demo_autopilot": get_settings().demo_autopilot}
+
+
+@app.get("/api/ready", tags=["system"])
+def ready():
+    """Readiness: 503 when the DB is unreachable or the dispatch ack-timeout watcher has stopped beating."""
+    from .services import background
+    problems = []
+    if not _db_ok():
+        problems.append("database unreachable")
+    age = background.worker_ages().get("ack_timeout")
+    if age is None or age > background.ACK_STALE_S:
+        problems.append("ack_timeout worker " + ("not started" if age is None else f"stale ({age:.0f} s)"))
+    if problems:
+        return JSONResponse({"ready": False, "detail": "; ".join(problems)}, status_code=503)
+    return {"ready": True}
