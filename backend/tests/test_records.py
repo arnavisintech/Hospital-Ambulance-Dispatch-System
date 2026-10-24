@@ -136,3 +136,19 @@ def _pdf_text(pdf: bytes) -> str:
             pass
         out += [m.decode("latin-1") for m in re.findall(rb"\((.*?)\) ?Tj", raw)]
     return " ".join(out)
+
+
+def test_trip_station_follows_the_ambulance_that_completed_it(world):
+    """A trip reassigned to another unit (e.g. the controller swaps ambulances) belongs to the station that ran it."""
+    from app.services import trips
+    h = world.hospital()
+    st_a, st_b = world.station(h), world.station(world.hospital())
+    amb_a, amb_b = world.ambulance(st_a), world.ambulance(st_b, lat=13.09, lng=80.28)
+    with SessionLocal() as db:
+        req = EmergencyRequest(lat=13.08, lng=80.27, ambulance_id=amb_a, status=RequestStatus.arrived, destination_hospital_id=h)
+        db.add(req)
+        db.flush()
+        assert trips.get_or_create_trip(db, req).station_id == st_a
+        req.ambulance_id = amb_b
+        trip = trips.close_trip(db, req, None)
+        assert trip.ambulance_id == amb_b and trip.station_id == st_b

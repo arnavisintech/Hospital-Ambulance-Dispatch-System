@@ -241,13 +241,19 @@ def latest_path(db: Session, amb_id: int, limit: int = 50) -> list[list[float]]:
     return [[r.lat, r.lng] for r in reversed(rows)]
 
 
+def set_trip_ambulance(db: Session, trip: TripRecord, ambulance_id: int | None) -> None:
+    """The ambulance and its station always change together: records are scoped to the station that ran the trip."""
+    amb = db.get(Ambulance, ambulance_id) if ambulance_id else None
+    trip.ambulance_id = ambulance_id
+    trip.station_id = amb.station_id if amb else None
+
+
 def get_or_create_trip(db: Session, req: EmergencyRequest) -> TripRecord:
     trip = db.execute(select(TripRecord).where(TripRecord.request_id == req.id)).scalar_one_or_none()
     if trip is None:
-        amb = db.get(Ambulance, req.ambulance_id) if req.ambulance_id else None
-        trip = TripRecord(request_id=req.id, ambulance_id=req.ambulance_id, station_id=amb.station_id if amb else None,
-                          destination_hospital_id=req.destination_hospital_id,
+        trip = TripRecord(request_id=req.id, destination_hospital_id=req.destination_hospital_id,
                           dispatched_at=req.dispatched_at, summary={})
+        set_trip_ambulance(db, trip, req.ambulance_id)
         db.add(trip)
         db.flush()
     return trip
@@ -271,7 +277,7 @@ def close_trip(db: Session, req: EmergencyRequest, user_id: int | None, *, manua
     trip.handover_time = now
     trip.handover_confirmed_by = user_id
     trip.closed_manually = manual
-    trip.ambulance_id = req.ambulance_id
+    set_trip_ambulance(db, trip, req.ambulance_id)  # the unit that completed it (may differ after a reassignment)
     trip.destination_hospital_id = req.destination_hospital_id
     trip.dispatched_at = trip.dispatched_at or req.dispatched_at
     if trip.arrived_scene_at and not trip.response_time_seconds:
