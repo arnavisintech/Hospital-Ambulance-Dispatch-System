@@ -77,7 +77,16 @@ def _create(body: RequestIn, user: User, channel: str, db: Session, bg: Backgrou
                                                       "channel": channel})
     bg.add_task(dispatch.run_dispatch, req.id)  # own DB session; never reuses this request's
     response.status_code = 201
-    return trips.request_out(db, req)
+    return {**trips.request_out(db, req), "estimated_wait_seconds": _estimated_wait(db, req)}
+
+
+def _estimated_wait(db: Session, req: EmergencyRequest) -> int | None:
+    """UC-1 step 6: road-time ETA of the best ambulance free right now (None when none is). Advisory only."""
+    try:
+        best = dispatch.rank_candidates(db, req)[:1]
+    except Exception:  # noqa: BLE001 - the receipt must never fail over an estimate
+        return None
+    return int(best[0]["eta_seconds"]) if best else None
 
 
 @router.post("", status_code=201)

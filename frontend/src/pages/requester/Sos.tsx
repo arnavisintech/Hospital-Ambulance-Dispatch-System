@@ -5,7 +5,7 @@ import { ChevronRight, LocateFixed, MapPin, PencilLine, Phone, Search, Siren, Wi
 import { MobileAppLayout } from '../../components/layout/MobileAppLayout';
 import { MapCanvas } from '../../components/map';
 import { Button, SegmentedControl, Textarea, useToast } from '../../components/ui';
-import { AGE_OPTIONS, buildSosBody, type AgeGroup } from './trip';
+import { AGE_OPTIONS, buildSosBody, receiptMessage, type AgeGroup } from './trip';
 import { notifyQueueChanged } from '../../components/QueueBanner';
 import { useAsync } from '../../hooks/useAsync';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
@@ -125,6 +125,7 @@ export default function Sos() {
     setBusy(true);
     try {
       const r = await post<RequestOut>('/requests', body);
+      toast(receiptMessage(r.id, r.estimated_wait_seconds), 'success');
       nav(`/track/${r.id}`);
     } catch (err) {
       if (isRetryable(err)) {

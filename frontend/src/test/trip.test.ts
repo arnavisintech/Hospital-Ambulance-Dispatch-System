@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AGE_OPTIONS, applyLiveEvent, buildSosBody, isCancellable, pickEta, reachedAt, tripHeadline, tripStage, tripTimes } from '../pages/requester/trip';
+import { AGE_OPTIONS, applyLiveEvent, buildSosBody, isCancellable, pickEta, reachedAt, receiptMessage, tripHeadline, tripStage, tripTimes } from '../pages/requester/trip';
 
 describe('tripStage', () => {
   it('maps statuses to screens', () => {
@@ -123,5 +123,16 @@ describe('buildSosBody', () => {
   });
   it('offers four age choices ending with "Not sure"', () => {
     expect(AGE_OPTIONS.map((o) => o.value)).toEqual(['child', 'adult', 'senior', 'unknown']);
+  });
+});
+
+describe('receiptMessage (UC-1 step 6)', () => {
+  it('states the estimated wait in whole minutes, at least one', () => {
+    expect(receiptMessage(7, 420)).toBe('Request #7 received · nearest ambulance about 7 min away');
+    expect(receiptMessage(7, 20)).toBe('Request #7 received · nearest ambulance about 1 min away');
+  });
+  it('promises no number when no ambulance is free', () => {
+    expect(receiptMessage(9, null)).toBe('Request #9 received · finding you an ambulance now');
+    expect(receiptMessage(9, undefined)).toBe('Request #9 received · finding you an ambulance now');
   });
 });

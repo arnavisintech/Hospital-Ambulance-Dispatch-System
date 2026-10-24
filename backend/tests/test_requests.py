@@ -115,3 +115,18 @@ def test_outcome_feeds_age_group_into_history(client, world):
         db.commit()
         row = db.execute(select(IncidentHistory).where(IncidentHistory.source == "live")).scalars().one()
     assert row.patient_age_group == "elderly"
+
+
+def test_receipt_carries_estimated_wait(client, world):
+    """UC-1 step 6: the requester is told roughly how long help will take as soon as the request is received."""
+    u = world.user()
+    none = client.post("/api/requests", headers=u["h"], json={"lat": PATIENT[0], "lng": PATIENT[1]}).json()
+    assert none["estimated_wait_seconds"] is None            # no ambulance free: no number promised
+    st = world.station(world.hospital())
+    world.ambulance(st, lat=PATIENT[0] + 0.01, lng=PATIENT[1])
+    u2 = world.user()
+    r = client.post("/api/requests", headers=u2["h"], json={"lat": PATIENT[0], "lng": PATIENT[1]})
+    assert r.status_code == 201
+    wait = r.json()["estimated_wait_seconds"]
+    assert isinstance(wait, int) and 0 < wait < 1800
+    assert "estimated_wait_seconds" not in client.get(f"/api/requests/{r.json()['id']}", headers=u2["h"]).json()

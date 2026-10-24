@@ -49,6 +49,8 @@ export interface RequestOut {
   accepted_at?: string | null;
   completed_at?: string | null;
   match_duration_ms?: number | null;
+  /** Only on the create response: road-time ETA of the best free ambulance at intake (UC-1 step 6). */
+  estimated_wait_seconds?: number | null;
   attempts?: Attempt[];
   /** v2: every status transition with timestamp. */
   timeline?: TimelineEvent[];

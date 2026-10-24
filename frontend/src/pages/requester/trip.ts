@@ -25,6 +25,13 @@ export function isCancellable(status: string): boolean {
 
 /* ------------------------------------------------------------------ headline */
 
+/** Receipt shown the moment an SOS is accepted (UC-1 step 6), using the server's intake-time estimate. */
+export function receiptMessage(id: number, estimatedWaitSeconds: number | null | undefined): string {
+  if (estimatedWaitSeconds == null) return `Request #${id} received · finding you an ambulance now`;
+  const min = Math.max(1, Math.round(estimatedWaitSeconds / 60));
+  return `Request #${id} received · nearest ambulance about ${min} min away`;
+}
+
 export interface Headline {
   title: string;
   subtitle: string;
