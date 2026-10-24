@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from .. import audit, events
 from ..db import get_db
 from ..deps import current_user, require_roles
-from ..models import Ambulance, AuditLog, EmergencyRequest, Hospital, RequestStatus, Role, TripRecord, User, utcnow
+from ..models import (Ambulance, AmbulanceStatus, AuditLog, DarkStation, EmergencyRequest, Hospital, RequestStatus, Role,
+                      TripRecord, User, utcnow)
 from ..services import capacity, dispatch, notify, trips
 
 router = APIRouter(prefix="/api/hospitals", tags=["hospitals"])
@@ -19,6 +20,11 @@ class CapacityIn(BaseModel):
     available_beds: int = Field(ge=0)
     available_icu: int = Field(ge=0)
     specialists: dict[str, int] | None = None
+
+
+class FleetPatch(BaseModel):
+    staffed: bool | None = None
+    maintenance: bool | None = None
 
 
 class HandoverIn(BaseModel):
@@ -159,3 +165,60 @@ def handover(hospital_id: int, request_id: int, body: HandoverIn | None = None,
     req = _incoming_request(db, hospital_id, request_id)
     trips.close_trip(db, req, user.id, reason=body.notes if body else None)
     return trips.request_out(db, req)
+
+
+# ------------------------------------------------------------------ fleet (FR2, STRQ5: each hospital owns its fleet)
+BUSY = (AmbulanceStatus.assigned, AmbulanceStatus.en_route, AmbulanceStatus.on_scene, AmbulanceStatus.transporting)
+
+
+def _ambulance_out(a: Ambulance, now) -> dict:
+    seen = trips.aware(a.location_updated_at) if a.location_updated_at else None
+    return {"id": a.id, "registration_number": a.registration_number, "kind": a.kind, "status": a.status.value,
+            "staffed": a.staffed, "station_id": a.station_id,
+            "location_age_s": int((now - seen).total_seconds()) if seen else None}
+
+
+@router.get("/{hospital_id}/fleet")
+def fleet(hospital_id: int, user: User = Depends(require_roles(Role.hospital_staff, Role.admin)),
+          db: Session = Depends(get_db)):
+    """This hospital's dark stations and their ambulances with live status and staffing."""
+    _own_staff(db, user, hospital_id, allow_admin=True)
+    _hospital(db, hospital_id)
+    now = utcnow()
+    stations = db.execute(select(DarkStation).where(DarkStation.hospital_id == hospital_id)
+                          .order_by(DarkStation.id)).scalars().all()
+    out = []
+    for st in stations:
+        units = db.execute(select(Ambulance).where(Ambulance.station_id == st.id).order_by(Ambulance.id)).scalars()
+        out.append({"id": st.id, "name": st.name, "is_active": st.is_active,
+                    "ambulances": [_ambulance_out(a, now) for a in units]})
+    return {"hospital_id": hospital_id, "stations": out}
+
+
+@router.patch("/{hospital_id}/ambulances/{ambulance_id}")
+def update_ambulance(hospital_id: int, ambulance_id: int, body: FleetPatch,
+                     user: User = Depends(require_roles(Role.hospital_staff, Role.admin)), db: Session = Depends(get_db)):
+    """Take a unit out of service (maintenance / not staffed) or back in. Never while it is on a trip."""
+    _own_staff(db, user, hospital_id, allow_admin=True)
+    amb = dispatch._lock_ambulance(db, ambulance_id)
+    st = db.get(DarkStation, amb.station_id) if amb else None
+    if amb is None or st is None or st.hospital_id != hospital_id:
+        raise HTTPException(404, "Ambulance not found at this hospital")
+    if amb.status in BUSY and (body.maintenance or body.staffed is False):
+        raise HTTPException(409, "This ambulance is on a trip; take it out of service after the trip ends")
+    changes = {}
+    if body.staffed is not None and body.staffed != amb.staffed:
+        amb.staffed = body.staffed
+        changes["staffed"] = body.staffed
+    if body.maintenance is True and amb.status != AmbulanceStatus.maintenance:
+        amb.status = AmbulanceStatus.maintenance
+        changes["status"] = amb.status.value
+    elif body.maintenance is False and amb.status == AmbulanceStatus.maintenance:
+        amb.status = AmbulanceStatus.available if amb.staffed else AmbulanceStatus.offline
+        changes["status"] = amb.status.value
+    if changes:
+        audit.log(db, "fleet.update", "ambulance", amb.id, user.id, {"hospital_id": hospital_id, **changes})
+        db.commit()
+        events.publish("controller", "ambulance.status", {"ambulance_id": amb.id, "status": amb.status.value,
+                                                          "staffed": amb.staffed})
+    return _ambulance_out(amb, utcnow())

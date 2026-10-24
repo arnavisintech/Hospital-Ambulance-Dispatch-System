@@ -21,6 +21,13 @@ const mkBoard = (over: Partial<Board> = {}): Board => ({
 const live = (b = mkBoard()): LiveBoard => ({ board: b, routes: {} });
 
 describe('reduceBoard', () => {
+  it('applies a hospital-side status change (maintenance) to the fleet without a reload', () => {
+    const r = reduceBoard(live(), { type: 'ambulance.status', data: { ambulance_id: 11, status: 'maintenance', staffed: true } });
+    expect(r.reload).toBe(false);
+    expect(r.state.board.ambulances.find((a) => a.id === 11)?.status).toBe('maintenance');
+    expect(reduceBoard(live(), { type: 'ambulance.status', data: { ambulance_id: 99, status: 'available' } }).reload).toBe(true);
+  });
+
   it('moves an ambulance and updates the request ETA on ambulance.location', () => {
     const r = reduceBoard(live(), { type: 'ambulance.location', data: { ambulance_id: 10, lat: 13.01, lng: 80.02, heading_deg: 90, request_id: 1, eta_seconds: 120 } });
     const a = r.state.board.ambulances.find((x) => x.id === 10)!;

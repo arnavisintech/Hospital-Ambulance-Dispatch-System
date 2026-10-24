@@ -74,6 +74,15 @@ export function reduceBoard(state: LiveBoard, msg: WsMessage): ReduceResult {
       return { state: { ...state, board }, reload: false };
     }
 
+    case 'ambulance.status': { // hospital staff took a unit out of / back into service
+      const id = num(d.ambulance_id);
+      const i = id === undefined ? -1 : b.ambulances.findIndex((a) => a.id === id);
+      if (i < 0 || typeof d.status !== 'string') return { state, reload: true };
+      const ambulances = b.ambulances.slice();
+      ambulances[i] = { ...ambulances[i], status: d.status };
+      return { state: { ...state, board: { ...b, ambulances } }, reload: false };
+    }
+
     case 'request.status': {
       if (reqId === undefined) return { state, reload: true };
       const status = typeof d.status === 'string' ? d.status : undefined;
