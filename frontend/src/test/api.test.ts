@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, api, buildUrl, getToken, onUnauthorized, setToken } from '../lib/api';
+import { ApiError, api, buildUrl, fetchFile, getToken, onUnauthorized, setToken } from '../lib/api';
 import { buildWsUrl } from '../hooks/useSocket';
 
 const mockFetch = (status: number, body?: unknown) =>
@@ -87,5 +87,34 @@ describe('multipart uploads and error detail', () => {
     const err = (await api('/x').catch((e: unknown) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.detail).toEqual({ errors: ['row 2: bad'] });
+  });
+
+  it('fetchFile sends the bearer token and returns the blob with the server filename', async () => {
+    setToken('abc');
+    const blob = new Blob(['a,b\n']);
+    const f = vi.fn().mockResolvedValue({
+      ok: true, status: 200, statusText: 'OK',
+      headers: new Headers({ 'Content-Disposition': 'attachment; filename="hads-audit-20261024.csv"' }),
+      blob: async () => blob,
+    });
+    vi.stubGlobal('fetch', f);
+    const out = await fetchFile('/audit/export.csv', { action: 'x', entity: '' }, 'audit.csv');
+    expect(f.mock.calls[0][0]).toBe('/api/audit/export.csv?action=x');
+    expect(f.mock.calls[0][1].headers.Authorization).toBe('Bearer abc');
+    expect(out.filename).toBe('hads-audit-20261024.csv');
+    expect(out.blob).toBe(blob);
+  });
+
+  it('fetchFile falls back to the given name and raises the server error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, status: 200, statusText: 'OK', headers: new Headers(), blob: async () => new Blob([]) }));
+    expect((await fetchFile('/x', undefined, 'report.csv')).filename).toBe('report.csv');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 403, statusText: 'Forbidden', headers: new Headers(),
+      text: async () => JSON.stringify({ detail: 'Role not permitted' }) }));
+    const err = (await fetchFile('/x', undefined, 'r.csv').catch((e: unknown) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(403);
+    expect(err.message).toBe('Role not permitted');
   });
 });

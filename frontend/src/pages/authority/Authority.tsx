@@ -4,6 +4,7 @@ import {
   Activity, ArrowRight, Building2, CheckCircle2, Eye, Hospital, MapPinned, MinusCircle, RefreshCw, ShieldCheck, Timer, XCircle,
   type LucideIcon,
 } from 'lucide-react';
+import { DownloadButton } from '../../components/DownloadButton';
 import { Badge, IconButton, PageHeader, Skeleton } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
 import { get } from '../../lib/api';
@@ -12,7 +13,7 @@ import { fmtClock, fmtNumber } from '../../lib/format';
 import type { HospitalBrief, RiskMap } from '../../lib/types';
 import { IncidentBars, ResponseTrendChart } from '../admin/shared/charts';
 import { KpiGrid, useRange } from '../admin/shared/kpis';
-import { fmtMs, fmtPercent, rangeLabel, type CsvColumn } from '../admin/shared/logic';
+import { fmtMs, fmtPercent, rangeLabel, rangeToDays, type CsvColumn } from '../admin/shared/logic';
 import type { AuditVerify, CoverageGap, DashSummary } from '../admin/shared/types';
 import {
   CoverageGapList, CoverageMap, ExportButton, gapName, HospitalTable, PageError, Panel, RangeControl, StaleBanner, StationTable,
@@ -124,6 +125,9 @@ export default function Authority() {
         </span>}
         actions={<>
           <RangeControl value={range} onChange={setRange} />
+          <DownloadButton path="/dashboard/report.csv" query={{ days: rangeToDays(range) }} filename="hads-compliance.csv">
+            Download compliance report (CSV)
+          </DownloadButton>
           <IconButton label="Refresh" icon={RefreshCw} variant="secondary" onClick={() => { void dash.reload(); void risk.reload(); void hospitals.reload(); }} />
         </>}
       />

@@ -273,6 +273,7 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: 'als_surcharge', label: 'ALS surcharge', group: 'fares', min: 0, max: 100000, integer: false, prefix: '₹', help: 'Added when an Advanced Life Support unit is dispatched.' },
   { key: 'revenue_share_pct', label: 'Hospital revenue share', group: 'fares', min: 0, max: 100, integer: false, unit: '%', help: 'Default share of each fare paid to the partner hospital. Hospitals can override it.' },
   { key: 'dispatch_target_s', label: 'Match target (NFR1)', group: 'dispatch', min: 1, max: 120, integer: true, unit: 's', help: 'Time allowed to find and rank the nearest ambulance. Drives the SLA KPI.' },
+  { key: 'response_target_s', label: 'Response time target', group: 'dispatch', min: 60, max: 7200, integer: true, unit: 's', help: '90th-percentile call-to-scene time the compliance report checks against.' },
   { key: 'crew_ack_timeout_s', label: 'Crew acknowledgement timeout', group: 'dispatch', min: 5, max: 600, integer: true, unit: 's', help: 'An offer not accepted in this time is re-offered to the next ambulance.' },
   { key: 'capacity_stale_min', label: 'Capacity freshness window', group: 'dispatch', min: 1, max: 1440, integer: true, unit: 'min', help: 'Hospital capacity older than this is treated as unknown and deprioritised.' },
   { key: 'rebalance_max_moves', label: 'Max rebalancing moves', group: 'model', min: 1, max: 20, integer: true, help: 'Upper bound on station moves suggested per rebalancing run.' },

@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Filter, Link2, ScrollText, ShieldAlert, Shie
 import {
   Badge, Button, Card, DataTable, Drawer, EmptyState, ErrorState, IconButton, Input, PageHeader, Tabs, useToast, type Column,
 } from '../../components/ui';
+import { DownloadButton } from '../../components/DownloadButton';
 import { useAuth } from '../../context/AuthContext';
 import { useAsync } from '../../hooks/useAsync';
 import { get } from '../../lib/api';
@@ -107,7 +108,12 @@ export default function AuditPage() {
   return (
     <div>
       <PageHeader title="Audit log" subtitle={`Tamper-evident, hash-chained record of every sensitive action (NFR7)${user?.role === 'authority' ? ' · read-only' : ''}`}
-        actions={<Button icon={ShieldCheck} loading={verifying} onClick={() => void doVerify()}>{verifying ? 'Verifying…' : 'Verify integrity'}</Button>} />
+        actions={<>
+          <DownloadButton path="/audit/export.csv" query={{ action: applied.action, entity: applied.entity }} filename="hads-audit.csv">
+            Export CSV
+          </DownloadButton>
+          <Button icon={ShieldCheck} loading={verifying} onClick={() => void doVerify()}>{verifying ? 'Verifying…' : 'Verify integrity'}</Button>
+        </>} />
       {verify && <VerifyBanner v={verify} onClose={() => setVerify(null)} />}
 
       <Card padding="md" className="mb-4">

@@ -21,6 +21,7 @@ SETTING_DEFS: dict[str, tuple] = {
     "als_surcharge": (400.0, 0.0, 100000.0, float),
     "crew_ack_timeout_s": (30, 5, 600, int),
     "dispatch_target_s": (8, 1, 120, int),
+    "response_target_s": (900, 60, 7200, int),       # p90 call-to-scene target for the compliance report
     "capacity_stale_min": (15, 1, 1440, int),
     "rebalance_max_moves": (5, 1, 20, int),
     "analytics_retrain_interval_min": (60, 1, 10080, int),

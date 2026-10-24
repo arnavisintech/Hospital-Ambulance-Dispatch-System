@@ -78,20 +78,53 @@ export async function api<T = unknown>(path: string, opts: ReqOpts = {}): Promis
   }
 
   if (res.status === 204) return undefined as T;
-  let data: unknown = null;
-  const text = await res.text();
-  if (text) { try { data = JSON.parse(text); } catch { data = text; } }
-
-  if (!res.ok) {
-    // A 401 on login itself (auth:false) is just bad credentials, not an expired session.
-    if (res.status === 401 && opts.auth !== false) {
-      setToken(null);
-      unauthorizedHandler?.();
-    }
-    const detail = data && typeof data === 'object' ? (data as { detail?: unknown }).detail : undefined;
-    throw new ApiError(res.status, extractDetail(data, res.statusText || `HTTP ${res.status}`), detail);
-  }
+  const data = await readBody(res);
+  if (!res.ok) throw failure(res, data, opts);
   return data as T;
+}
+
+async function readBody(res: Response): Promise<unknown> {
+  const text = await res.text();
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { return text; }
+}
+
+function failure(res: Response, data: unknown, opts: ReqOpts): ApiError {
+  // A 401 on login itself (auth:false) is just bad credentials, not an expired session.
+  if (res.status === 401 && opts.auth !== false) {
+    setToken(null);
+    unauthorizedHandler?.();
+  }
+  const detail = data && typeof data === 'object' ? (data as { detail?: unknown }).detail : undefined;
+  return new ApiError(res.status, extractDetail(data, res.statusText || `HTTP ${res.status}`), detail);
+}
+
+/** Authenticated GET of a file (CSV export etc.); the name comes from Content-Disposition when the server sends one. */
+export async function fetchFile(path: string, query: ReqOpts['query'] | undefined, fallbackName: string): Promise<{ blob: Blob; filename: string }> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(path, query), { method: 'GET', headers });
+  } catch {
+    throw new ApiError(0, 'Network error - check your connection');
+  }
+  if (!res.ok) throw failure(res, await readBody(res), {});
+  const m = /filename="?([^";]+)"?/i.exec(res.headers.get('Content-Disposition') ?? '');
+  return { blob: await res.blob(), filename: m?.[1] ?? fallbackName };
+}
+
+/** Save a blob through a temporary link. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export const get = <T>(path: string, query?: ReqOpts['query']) => api<T>(path, { query });
