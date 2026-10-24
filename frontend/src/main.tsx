@@ -5,6 +5,7 @@ import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { ConnectionProvider } from './context/ConnectionContext';
 import { ToastProvider } from './context/ToastContext';
+import { registerServiceWorker } from './lib/sw';
 // Self-hosted UI font (no third-party font CDN); latin subset, the weights the design system uses.
 import '@fontsource/plus-jakarta-sans/latin-400.css';
 import '@fontsource/plus-jakarta-sans/latin-500.css';
@@ -26,3 +27,5 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </React.StrictMode>,
 );
+
+void registerServiceWorker();

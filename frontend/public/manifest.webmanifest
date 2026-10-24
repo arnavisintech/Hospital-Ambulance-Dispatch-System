@@ -1,0 +1,15 @@
+{
+  "name": "HADS - Ambulance in minutes",
+  "short_name": "HADS",
+  "description": "Request an ambulance in two taps, with live tracking.",
+  "start_url": "/sos",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F5F7",
+  "theme_color": "#E23744",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
