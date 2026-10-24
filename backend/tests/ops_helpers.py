@@ -1,4 +1,6 @@
 """Shared fixtures/helpers for the ops/analytics tests (kept out of conftest.py on purpose)."""
+import os
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -16,7 +18,12 @@ from app.services import analytics as analytics_svc
 
 class Env:
     def __init__(self, seed: bool = True):
-        self.engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        url = os.environ.get("HADS_TEST_OPS_DATABASE_URL")  # a second database: conftest resets the first per test
+        if url:
+            self.engine = create_engine(url)
+            Base.metadata.drop_all(self.engine)
+        else:
+            self.engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine, autoflush=False, expire_on_commit=False)
         analytics_svc.clear_cache()

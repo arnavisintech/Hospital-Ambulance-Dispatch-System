@@ -4,7 +4,8 @@ import tempfile
 from datetime import timedelta
 
 _TMP = tempfile.mkdtemp(prefix="hads-test-")
-os.environ["DATABASE_URL"] = f"sqlite:///{_TMP}/test.db"
+# HADS_TEST_DATABASE_URL runs the suite on another database (scripts/test-postgres.ps1: PostgreSQL 16).
+os.environ["DATABASE_URL"] = os.environ.get("HADS_TEST_DATABASE_URL") or f"sqlite:///{_TMP}/test.db"
 os.environ["SEED_ON_STARTUP"] = "false"
 os.environ["AUTO_CREATE_SCHEMA"] = "true"  # test databases skip migrations (test_migrations covers them)
 os.environ["ROUTING_PROVIDER"] = "haversine"
