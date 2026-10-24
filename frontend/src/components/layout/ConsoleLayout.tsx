@@ -1,4 +1,5 @@
 import { createContext, Suspense, useContext, useEffect, useState, type ReactNode } from 'react';
+import { NotificationBell } from '../NotificationBell';
 import { NavLink, Outlet, matchPath, useLocation } from 'react-router-dom';
 import { Menu as MenuIcon, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -83,6 +84,7 @@ export function ConsoleLayout({ children }: { children?: ReactNode }) {
             )}
             <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-ink-900">{title}</h1>
             <ConnectionIndicator compact={!isDesktop} />
+            <NotificationBell />
             <UserMenu />
           </header>
           <main id="main" className={cn('min-h-0 flex-1', chrome.fullBleed ? 'relative overflow-hidden' : 'overflow-y-auto scrollbar-thin')}>

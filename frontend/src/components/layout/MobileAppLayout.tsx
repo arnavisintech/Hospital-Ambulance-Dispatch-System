@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { NotificationBell } from '../NotificationBell';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -67,7 +68,7 @@ export function MobileAppLayout({
   const insets = useMemo(() => (isDesktop ? {} : { top: 64, bottom: peek }), [isDesktop, peek]);
 
   const backBtn = onBack && <IconButton label="Back" icon={ArrowLeft} onClick={onBack} variant={map && !isDesktop ? 'floating' : 'ghost'} className={map && !isDesktop ? '' : '-ml-2'} />;
-  const userMenu = showUserMenu && user ? <UserMenu /> : null;
+  const userMenu = showUserMenu && user ? <span className="flex items-center gap-1"><NotificationBell /><UserMenu /></span> : null;
   const queue = user?.role === 'requester' ? <QueueBanner /> : null;
 
   /* -------------------------------------------- map screens */
