@@ -1,3 +1,7 @@
+# Normalise text to LF in the repository (Windows editors may write CRLF); batch files need CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
 *.sh text eol=lf
 *.png binary
 *.npy binary

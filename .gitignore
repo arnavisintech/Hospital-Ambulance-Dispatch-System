@@ -21,3 +21,6 @@ infra/**/data/
 # Executor scratch
 backend/data/*
 !backend/data/.gitkeep
+
+# Git Bash crash dumps
+*.stackdump
