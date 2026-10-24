@@ -34,16 +34,16 @@ export interface ToneClasses {
 // Literal class strings so Tailwind's JIT picks them up.
 export const TONES: Record<Tone, ToneClasses> = {
   neutral: { soft: 'bg-ink-900/[.06] text-ink-700', solid: 'bg-ink-700 text-white', text: 'text-ink-700', dot: 'bg-ink-500', bg: 'bg-canvas', border: 'border-line-strong', css: 'rgb(var(--ink-500))' },
-  muted: { soft: 'bg-ink-900/[.05] text-ink-500', solid: 'bg-ink-400 text-white', text: 'text-ink-500', dot: 'bg-ink-400', bg: 'bg-canvas', border: 'border-line', css: 'rgb(var(--ink-400))' },
+  muted: { soft: 'bg-ink-900/[.05] text-ink-500', solid: 'bg-ink-500 text-white', text: 'text-ink-500', dot: 'bg-ink-400', bg: 'bg-canvas', border: 'border-line', css: 'rgb(var(--ink-400))' },
   brand: { soft: 'bg-brand-50 text-brand-600', solid: 'bg-brand-500 text-white', text: 'text-brand-600', dot: 'bg-brand-500', bg: 'bg-brand-50', border: 'border-brand-200', css: 'rgb(var(--brand-500))' },
   danger: { soft: 'bg-danger-bg text-danger-fg', solid: 'bg-danger text-white', text: 'text-danger-fg', dot: 'bg-danger', bg: 'bg-danger-bg', border: 'border-brand-200', css: 'rgb(var(--brand-500))' },
   critical: { soft: 'bg-brand-100 text-brand-700', solid: 'bg-brand-700 text-white', text: 'text-brand-700', dot: 'bg-brand-700', bg: 'bg-brand-100', border: 'border-brand-400', css: 'rgb(var(--brand-700))' },
-  success: { soft: 'bg-success-bg text-success-fg', solid: 'bg-success text-white', text: 'text-success-fg', dot: 'bg-success', bg: 'bg-success-bg', border: 'border-success/30', css: 'rgb(var(--success))' },
+  success: { soft: 'bg-success-bg text-success-fg', solid: 'bg-success-fg text-white', text: 'text-success-fg', dot: 'bg-success', bg: 'bg-success-bg', border: 'border-success/30', css: 'rgb(var(--success))' },
   info: { soft: 'bg-info-bg text-info-fg', solid: 'bg-info text-white', text: 'text-info-fg', dot: 'bg-info', bg: 'bg-info-bg', border: 'border-info/30', css: 'rgb(var(--info))' },
-  warning: { soft: 'bg-warning-bg text-warning-fg', solid: 'bg-warning text-white', text: 'text-warning-fg', dot: 'bg-warning', bg: 'bg-warning-bg', border: 'border-warning/30', css: 'rgb(var(--warning))' },
+  warning: { soft: 'bg-warning-bg text-warning-fg', solid: 'bg-warning-fg text-white', text: 'text-warning-fg', dot: 'bg-warning', bg: 'bg-warning-bg', border: 'border-warning/30', css: 'rgb(var(--warning))' },
   violet: { soft: 'bg-violet-bg text-violet-fg', solid: 'bg-violet text-white', text: 'text-violet-fg', dot: 'bg-violet', bg: 'bg-violet-bg', border: 'border-violet/30', css: 'rgb(var(--violet))' },
-  orange: { soft: 'bg-orange-bg text-orange-fg', solid: 'bg-orange text-white', text: 'text-orange-fg', dot: 'bg-orange', bg: 'bg-orange-bg', border: 'border-orange/30', css: 'rgb(var(--orange))' },
-  teal: { soft: 'bg-teal-bg text-teal-fg', solid: 'bg-teal text-white', text: 'text-teal-fg', dot: 'bg-teal', bg: 'bg-teal-bg', border: 'border-teal/30', css: 'rgb(var(--teal))' },
+  orange: { soft: 'bg-orange-bg text-orange-fg', solid: 'bg-orange-fg text-white', text: 'text-orange-fg', dot: 'bg-orange', bg: 'bg-orange-bg', border: 'border-orange/30', css: 'rgb(var(--orange))' },
+  teal: { soft: 'bg-teal-bg text-teal-fg', solid: 'bg-teal-fg text-white', text: 'text-teal-fg', dot: 'bg-teal', bg: 'bg-teal-bg', border: 'border-teal/30', css: 'rgb(var(--teal))' },
 };
 
 export const toneClasses = (t: Tone): ToneClasses => TONES[t] ?? TONES.neutral;

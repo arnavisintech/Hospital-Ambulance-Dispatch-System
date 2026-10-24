@@ -55,7 +55,7 @@ export function KpiStrip({ kpis, matching, loading, onEscalations, actions, comp
               className={cn('min-w-0 rounded-md px-2 py-1.5 text-left', t.danger ? 'bg-brand-500 text-white' : 'bg-canvas text-ink-900',
                 t.onClick && 'press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500')}>
               {loading ? <Skeleton className="h-6 w-8" /> : <span className="block text-lg font-extrabold leading-6 tabular-nums">{t.value}</span>}
-              <span className={cn('block truncate text-[11px] font-semibold', t.danger ? 'text-white/90' : 'text-ink-500')}>{t.label}</span>
+              <span className={cn('block truncate text-2xs font-semibold', t.danger ? 'text-white/90' : 'text-ink-500')}>{t.label}</span>
             </Tag>
           );
         })}

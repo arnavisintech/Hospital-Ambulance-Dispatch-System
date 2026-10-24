@@ -120,7 +120,7 @@ function IvrForm({ onCreated, center, onCancel }: { onCreated: (r: RequestOut) =
               return (
                 <button
                   key={n} type="button" role="radio" aria-checked={on} onClick={() => setSeverity(n)} title={m.description}
-                  className={cn('press flex h-14 flex-col items-center justify-center rounded-md border px-1 text-center text-[11px] font-semibold leading-tight transition-colors',
+                  className={cn('press flex h-14 flex-col items-center justify-center rounded-md border px-1 text-center text-2xs font-semibold leading-tight transition-colors',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
                     on ? cn(toneClasses(m.tone).solid, 'border-transparent') : 'border-line-strong bg-surface text-ink-700 hover:border-ink-400')}
                 >

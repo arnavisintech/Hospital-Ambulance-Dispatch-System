@@ -68,7 +68,7 @@ export function ErrorState({ title = "Couldn't load this", message, onRetry, ret
 export function Call108Button({ size = 'md', variant = 'secondary', label = 'Call 108', className }: {
   size?: 'sm' | 'md' | 'lg' | 'xl'; variant?: 'secondary' | 'dark' | 'ghost'; label?: string; className?: string;
 }) {
-  const sz = { sm: 'h-9 px-3 text-sm', md: 'h-11 px-4 text-[15px]', lg: 'h-12 px-5 text-base', xl: 'h-14 px-6 text-lg' }[size];
+  const sz = { sm: 'h-9 px-3 text-sm', md: 'h-11 px-4 text-md', lg: 'h-12 px-5 text-base', xl: 'h-14 px-6 text-lg' }[size];
   const v = {
     secondary: 'border border-line-strong bg-surface text-ink-900 hover:bg-canvas',
     dark: 'bg-ink-900 text-white hover:bg-ink-700',

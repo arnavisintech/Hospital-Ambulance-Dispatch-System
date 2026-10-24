@@ -13,13 +13,13 @@
   --brand-100: 253 227 229;
   --brand-200: 251 201 205;
   --brand-400: 240 100 111;
-  --brand-500: 226 55 68;
+  --brand-500: 220 45 58;
   --brand-600: 200 36 58;
   --brand-700: 165 28 48;
 
   --ink-900: 17 24 39;
   --ink-700: 55 65 81;
-  --ink-500: 107 114 128;
+  --ink-500: 103 110 124;
   --ink-400: 156 163 175;
 
   --line: 229 231 235;
@@ -86,25 +86,6 @@
 }
 
 /* ---------------------------------------------------------------------------------------------
- * Legacy component classes (pre-v2 pages). Re-themed light so they keep working until screen agents
- * migrate them to src/components/ui. New code: use <Button>, <Card>, <Input>... instead.
- * ------------------------------------------------------------------------------------------- */
-@layer components {
-  .card { @apply rounded-lg border border-line/70 bg-surface p-4 shadow-card; }
-  .btn { @apply inline-flex min-h-[40px] items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition duration-micro active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50; }
-  .btn-primary { @apply btn bg-brand-500 text-white hover:bg-brand-600; }
-  .btn-secondary { @apply btn border border-line bg-surface text-ink-900 hover:bg-canvas; }
-  .btn-ghost { @apply btn text-ink-700 hover:bg-canvas; }
-  .btn-ok { @apply btn bg-success text-white hover:brightness-95; }
-  .btn-sm { @apply min-h-[32px] px-2.5 py-1 text-xs; }
-  .input { @apply w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink-900 placeholder-ink-400 focus:border-brand-500 focus:shadow-focus focus:outline-none; }
-  .label { @apply mb-1 block text-sm font-medium text-ink-700; }
-  .chip { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold; }
-  .th { @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-500; }
-  .td { @apply px-3 py-2 text-sm; }
-}
-
-/* ---------------------------------------------------------------------------------------------
  * Leaflet — premium light map look.
  * ------------------------------------------------------------------------------------------- */
 .leaflet-container {
@@ -136,7 +117,7 @@
 .hads-amb { position: relative; width: 100%; height: 100%; }
 .hads-amb__rot { position: absolute; inset: 0; transition: transform 220ms linear; will-change: transform; }
 .hads-amb__dot { position: absolute; right: -2px; top: -2px; width: 12px; height: 12px; border-radius: 9999px; border: 2px solid #fff; box-shadow: 0 1px 2px rgba(16,24,40,.25); }
-.hads-amb--selected > svg { filter: drop-shadow(0 0 0 rgb(var(--brand-500))) drop-shadow(0 4px 10px rgba(226,55,68,.45)); }
+.hads-amb--selected > svg { filter: drop-shadow(0 0 0 rgb(var(--brand-500))) drop-shadow(0 4px 10px rgb(var(--brand-500) / .45)); }
 .hads-chip {
   position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%);
   white-space: nowrap; border-radius: 9999px; background: rgb(var(--ink-900)); color: #fff;

@@ -54,7 +54,7 @@ export const RequestCard = forwardRef<HTMLButtonElement, RequestCardProps>(funct
           <p className="mt-0.5 flex items-center gap-1 truncate text-xs font-medium text-ink-500">
             <MapPin size={12} aria-hidden className="shrink-0" />
             <span className="truncate">{place}</span>
-            {r.channel === 'ivr' && <span className="ml-1 inline-flex items-center gap-0.5 rounded-sm bg-canvas px-1 text-[11px] font-semibold text-ink-700"><Phone size={10} aria-hidden />IVR</span>}
+            {r.channel === 'ivr' && <span className="ml-1 inline-flex items-center gap-0.5 rounded-sm bg-canvas px-1 text-2xs font-semibold text-ink-700"><Phone size={10} aria-hidden />IVR</span>}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {escalated ? <Badge tone="danger" icon={AlertTriangle}>Escalated</Badge> : <StatusPill status={r.status} />}

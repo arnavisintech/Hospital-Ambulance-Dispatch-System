@@ -334,7 +334,7 @@ function Swatch({ c }: { c: string }) {
   return (
     <div className="flex flex-col items-center gap-1">
       <span className={`h-12 w-12 rounded-md border border-line ${c}`} />
-      <span className="text-[10px] text-ink-500">{c.replace('bg-', '')}</span>
+      <span className="text-3xs text-ink-500">{c.replace('bg-', '')}</span>
     </div>
   );
 }

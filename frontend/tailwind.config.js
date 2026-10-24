@@ -13,9 +13,13 @@ export default {
       fontFamily: {
         sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', '"Segoe UI"', 'Roboto', 'sans-serif'],
       },
+      // The only type sizes in the app (src/test/theme.test.ts rejects ad-hoc text-[Npx]).
       fontSize: {
+        '3xs': ['10px', { lineHeight: '12px' }],   // badges, map markers, avatar initials
+        '2xs': ['11px', { lineHeight: '14px' }],   // micro labels, captions in dense consoles
         xs: ['12px', { lineHeight: '16px' }],
         sm: ['14px', { lineHeight: '20px' }],
+        md: ['15px', { lineHeight: '22px' }],      // default button text
         base: ['16px', { lineHeight: '24px' }],
         lg: ['18px', { lineHeight: '28px' }],
         xl: ['20px', { lineHeight: '28px' }],
@@ -23,6 +27,8 @@ export default {
         '3xl': ['30px', { lineHeight: '36px' }],
         '4xl': ['36px', { lineHeight: '40px' }],
         '5xl': ['48px', { lineHeight: '1.05' }],
+        display: ['40px', { lineHeight: '1.05' }],          // landing hero (mobile)
+        'display-lg': ['64px', { lineHeight: '1.05' }],    // landing hero (desktop)
       },
       colors: {
         brand: {
@@ -40,8 +46,6 @@ export default {
         violet: { DEFAULT: v('violet'), bg: v('violet-bg'), fg: v('violet-fg') },
         orange: { DEFAULT: v('orange'), bg: v('orange-bg'), fg: v('orange-fg') },
         teal: { DEFAULT: v('teal'), bg: v('teal-bg'), fg: v('teal-fg') },
-        // Legacy alias kept so pre-v2 pages compile until the screen agents migrate them. Prefer `brand`.
-        sos: { DEFAULT: v('brand-500'), dark: v('brand-600'), light: v('brand-400') },
       },
       borderRadius: {
         sm: '8px', md: '12px', lg: '16px', xl: '20px', '2xl': '24px',

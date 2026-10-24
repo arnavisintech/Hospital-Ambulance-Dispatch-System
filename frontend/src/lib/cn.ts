@@ -6,7 +6,7 @@ const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
       shadow: [{ shadow: ['card', 'raised', 'sheet', 'focus'] }],
-      'font-size': [{ text: ['xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl'] }],
+      'font-size': [{ text: ['3xs', '2xs', 'xs', 'sm', 'md', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', 'display', 'display-lg'] }],
       z: [{ z: ['map', 'map-overlay', 'sticky', 'sheet', 'modal', 'toast'] }],
     },
   },

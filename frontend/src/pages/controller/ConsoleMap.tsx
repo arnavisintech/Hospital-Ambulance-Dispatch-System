@@ -59,7 +59,7 @@ function requestIcon(r: RequestOut, escalated: boolean, selected: boolean): L.Di
     <circle cx="16" cy="15.5" r="10" fill="rgb(var(--surface))"/>
   </svg>
   <span style="position:absolute;left:0;right:0;top:${selected ? 8 : 5}px;display:flex;justify-content:center;color:${color}">${incidentSvg(r.incident_type)}</span>
-  ${escalated ? `<span style="position:absolute;top:-4px;right:-6px;width:14px;height:14px;border-radius:9999px;background:rgb(var(--brand-500));border:2px solid rgb(var(--surface));color:#fff;font:800 9px/10px 'Plus Jakarta Sans',system-ui;text-align:center">!</span>` : ''}
+  ${escalated ? `<span style="position:absolute;top:-4px;right:-6px;width:14px;height:14px;border-radius:9999px;background:rgb(var(--brand-500));border:2px solid rgb(var(--surface));color:rgb(var(--surface));font:800 9px/10px 'Plus Jakarta Sans',system-ui;text-align:center">!</span>` : ''}
 </div>`,
   });
 }

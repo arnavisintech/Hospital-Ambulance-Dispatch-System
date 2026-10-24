@@ -66,7 +66,7 @@ export function CountdownRing({ total, remaining, endsAt, onExpire, size = 64, s
       </svg>
       <span className="absolute inset-0 flex flex-col items-center justify-center leading-none" aria-hidden>
         {children ?? <span className={cn('font-extrabold tabular-nums text-ink-900', size >= 72 ? 'text-2xl' : 'text-lg')}>{secs}</span>}
-        {caption && <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-500">{caption}</span>}
+        {caption && <span className="mt-0.5 text-3xs font-semibold uppercase tracking-wide text-ink-500">{caption}</span>}
       </span>
     </div>
   );

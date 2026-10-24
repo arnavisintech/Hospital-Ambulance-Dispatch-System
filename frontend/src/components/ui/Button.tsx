@@ -13,14 +13,14 @@ const VARIANT: Record<ButtonVariant, string> = {
   outline: 'bg-transparent text-brand-600 border border-brand-200 hover:bg-brand-50',
   ghost: 'bg-transparent text-ink-700 hover:bg-ink-900/[.05] active:bg-ink-900/[.08]',
   danger: 'bg-surface text-brand-600 border border-brand-200 hover:bg-brand-50',
-  success: 'bg-success text-white shadow-[0_6px_16px_-6px_rgb(var(--success)/.5)] hover:brightness-95',
+  success: 'bg-success-fg text-white shadow-[0_6px_16px_-6px_rgb(var(--success)/.5)] hover:brightness-95',
   dark: 'bg-ink-900 text-white hover:bg-ink-700',
 };
 
 // 44px min touch target from md up. `sm` (36px) is for dense desktop tables/toolbars only.
 const SIZE: Record<ButtonSize, string> = {
   sm: 'h-9 px-3 text-sm gap-1.5 rounded-sm',
-  md: 'h-11 px-4 text-[15px] gap-2 rounded-md',
+  md: 'h-11 px-4 text-md gap-2 rounded-md',
   lg: 'h-12 px-5 text-base gap-2 rounded-md',
   xl: 'h-14 px-6 text-lg gap-2.5 rounded-lg',
 };

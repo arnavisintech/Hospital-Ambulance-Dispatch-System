@@ -62,7 +62,7 @@ export default function Landing() {
                 </span>
                 Live across Chennai · 24×7
               </span>
-              <h1 className="mt-5 text-[40px] font-extrabold leading-[1.05] tracking-tight text-ink-900 text-balance sm:text-5xl lg:text-[64px]">
+              <h1 className="mt-5 text-display font-extrabold leading-[1.05] tracking-tight text-ink-900 text-balance sm:text-5xl lg:text-display-lg">
                 Emergency? <span className="text-brand-500">An ambulance in minutes.</span>
               </h1>
               <p className="mt-5 max-w-xl text-lg text-ink-700">
@@ -291,7 +291,7 @@ function PhoneMock() {
             </svg>
           </motion.div>
           {/* hospital */}
-          <div className="absolute flex h-7 w-7 items-center justify-center rounded-full border-2 border-teal bg-surface text-sm font-extrabold text-teal shadow-card" style={{ left: 290, top: 40 }}>H</div>
+          <div className="absolute flex h-7 w-7 items-center justify-center rounded-full border-2 border-teal bg-surface text-sm font-extrabold text-teal-fg shadow-card" style={{ left: 290, top: 40 }}>H</div>
         </div>
         {/* sheet */}
         <div className="relative -mt-6 rounded-t-2xl bg-surface px-5 pb-6 pt-3 shadow-sheet">
@@ -385,7 +385,7 @@ function HospitalMock() {
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-info-bg text-info"><Ambulance size={18} /></span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-ink-900">{r.name}</p>
-                <span className={cn('mt-0.5 inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold', r.tone)}>{r.sev}</span>
+                <span className={cn('mt-0.5 inline-flex rounded-full px-2 py-0.5 text-2xs font-bold', r.tone)}>{r.sev}</span>
               </div>
               <div className="text-right">
                 <p className="text-sm font-bold tabular-nums text-ink-900">{r.eta}</p>

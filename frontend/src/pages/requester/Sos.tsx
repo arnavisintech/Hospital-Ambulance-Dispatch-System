@@ -232,7 +232,7 @@ export default function Sos() {
                   <span className={cn('flex h-9 w-9 items-center justify-center rounded-full', on ? 'bg-brand-500 text-white' : 'bg-canvas text-ink-700')} aria-hidden>
                     <m.icon size={20} />
                   </span>
-                  <span className="text-[13px] font-semibold leading-tight">{m.short}</span>
+                  <span className="text-xs font-semibold leading-tight">{m.short}</span>
                 </label>
               );
             })}

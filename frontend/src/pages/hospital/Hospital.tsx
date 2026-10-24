@@ -317,7 +317,7 @@ function IncomingCard({ item, remaining, now, fresh, onAck, onHandover }: {
             <span className="flex items-center gap-2 text-sm font-semibold text-ink-900">
               <span className="flex h-8 w-8 items-center justify-center rounded-md bg-canvas text-ink-700" aria-hidden><Ambulance size={16} /></span>
               {item.ambulance?.registration_number ?? 'Unit pending'}
-              {item.ambulance?.kind && <span className="rounded-sm bg-canvas px-1 text-[11px] font-semibold text-ink-700">{item.ambulance.kind}</span>}
+              {item.ambulance?.kind && <span className="rounded-sm bg-canvas px-1 text-2xs font-semibold text-ink-700">{item.ambulance.kind}</span>}
             </span>
             {item.crew && (
               <span className="flex min-w-0 items-center gap-2 text-sm text-ink-700">

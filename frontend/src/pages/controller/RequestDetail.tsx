@@ -197,13 +197,13 @@ export function RequestDetail({ req, board, escalated, now, onClose, onChanged, 
                     const current = req.ambulance?.id === c.ambulance_id;
                     return (
                       <li key={c.ambulance_id ?? i} className={cn('flex items-center gap-3 rounded-lg border p-3', current ? 'border-info/30 bg-info-bg' : 'border-line/80 bg-surface')}>
-                        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums', i === 0 ? 'bg-success text-white' : 'bg-canvas text-ink-700')}>
+                        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums', i === 0 ? 'bg-success-fg text-white' : 'bg-canvas text-ink-700')}>
                           {c.rank ?? i + 1}
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-bold text-ink-900">
                             {c.registration_number ?? `Unit ${c.ambulance_id}`}
-                            {c.kind && <span className="ml-1.5 rounded-sm bg-canvas px-1 py-px text-[11px] font-semibold text-ink-700">{String(c.kind)}</span>}
+                            {c.kind && <span className="ml-1.5 rounded-sm bg-canvas px-1 py-px text-2xs font-semibold text-ink-700">{String(c.kind)}</span>}
                           </p>
                           <p className="truncate text-xs font-medium text-ink-500">
                             {[c.station_name, c.distance_km != null ? fmtDistance(Number(c.distance_km)) : null].filter(Boolean).join(' · ') || '—'}

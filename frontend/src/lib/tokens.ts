@@ -10,8 +10,8 @@ export type TokenName =
 
 const FALLBACK: Record<TokenName, string> = {
   'brand-50': '254 242 243', 'brand-100': '253 227 229', 'brand-200': '251 201 205', 'brand-400': '240 100 111',
-  'brand-500': '226 55 68', 'brand-600': '200 36 58', 'brand-700': '165 28 48',
-  'ink-900': '17 24 39', 'ink-700': '55 65 81', 'ink-500': '107 114 128', 'ink-400': '156 163 175',
+  'brand-500': '220 45 58', 'brand-600': '200 36 58', 'brand-700': '165 28 48',
+  'ink-900': '17 24 39', 'ink-700': '55 65 81', 'ink-500': '103 110 124', 'ink-400': '156 163 175',
   line: '229 231 235', 'line-strong': '209 213 219', 'line-soft': '238 240 243', canvas: '244 245 247', surface: '255 255 255',
   success: '22 163 74', info: '37 99 235', warning: '217 119 6', violet: '124 58 237', orange: '234 88 12', teal: '13 148 136',
   'chart-grid': '238 240 243',
@@ -33,7 +33,7 @@ export function tokenRgbTuple(name: TokenName): [number, number, number] {
   return tuple;
 }
 
-/** CSS colour string, e.g. token('brand-500') -> "rgb(226 55 68)", token('ink-900', .5) -> "rgb(17 24 39 / 0.5)". */
+/** CSS colour string, e.g. token('brand-500') -> "rgb(220 45 58)", token('ink-900', .5) -> "rgb(17 24 39 / 0.5)". */
 export function token(name: TokenName, alpha = 1): string {
   const [r, g, b] = tokenRgbTuple(name);
   return alpha >= 1 ? `rgb(${r} ${g} ${b})` : `rgb(${r} ${g} ${b} / ${alpha})`;

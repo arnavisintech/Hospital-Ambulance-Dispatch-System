@@ -110,7 +110,7 @@ export function MapLegend({ showRisk }: { showRisk: boolean }) {
                 <p className="mt-1 flex items-center gap-2"><span className="h-1 w-6 rounded-full bg-info" aria-hidden />To hospital</p>
               </div>
               <p className="flex items-center gap-2">
-                <span className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-teal bg-surface text-[9px] font-extrabold text-teal" aria-hidden>H</span>
+                <span className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-teal bg-surface text-3xs font-extrabold text-teal-fg" aria-hidden>H</span>
                 Hospital · badge = free beds
               </p>
               {showRisk && (

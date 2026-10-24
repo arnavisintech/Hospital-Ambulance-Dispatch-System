@@ -25,7 +25,7 @@ export function NotificationBell() {
         className="press relative flex h-10 w-10 items-center justify-center rounded-full text-ink-700 hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
         <Bell size={20} aria-hidden />
         {unread > 0 && (
-          <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-500 px-1 text-[10px] font-bold text-white tabular-nums" aria-hidden>
+          <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-500 px-1 text-3xs font-bold text-white tabular-nums" aria-hidden>
             {unread > 9 ? '9+' : unread}
           </span>
         )}

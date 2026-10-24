@@ -62,7 +62,7 @@ export function FleetPanel({ board, onLocate }: { board: Board; onLocate: (a: Am
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-1.5 truncate text-sm font-bold text-ink-900">
                         {a.registration_number}
-                        {a.kind && <span className="rounded-sm bg-canvas px-1 py-px text-[11px] font-semibold text-ink-700">{a.kind}</span>}
+                        {a.kind && <span className="rounded-sm bg-canvas px-1 py-px text-2xs font-semibold text-ink-700">{a.kind}</span>}
                       </p>
                       <p className="truncate text-xs font-medium text-ink-500">
                         {[a.station_name, a.crew_name].filter(Boolean).join(' · ') || '—'}
@@ -71,9 +71,9 @@ export function FleetPanel({ board, onLocate }: { board: Board; onLocate: (a: Am
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <StatusPill status={a.status} kind="ambulance" />
                       {stale ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-warning-fg"><SignalLow size={12} aria-hidden />GPS {fmtDuration(a.location_age_s)} old</span>
+                        <span className="inline-flex items-center gap-1 text-2xs font-semibold text-warning-fg"><SignalLow size={12} aria-hidden />GPS {fmtDuration(a.location_age_s)} old</span>
                       ) : a.request_id ? (
-                        <span className="text-[11px] font-semibold text-ink-500 tabular-nums">Request #{a.request_id}</span>
+                        <span className="text-2xs font-semibold text-ink-500 tabular-nums">Request #{a.request_id}</span>
                       ) : null}
                     </div>
                   </button>

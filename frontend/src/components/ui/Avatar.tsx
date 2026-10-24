@@ -5,7 +5,7 @@ const PALETTE = [
   'bg-brand-50 text-brand-600', 'bg-info-bg text-info-fg', 'bg-teal-bg text-teal-fg',
   'bg-violet-bg text-violet-fg', 'bg-orange-bg text-orange-fg', 'bg-success-bg text-success-fg',
 ];
-const SIZE = { xs: 'h-6 w-6 text-[10px]', sm: 'h-8 w-8 text-xs', md: 'h-10 w-10 text-sm', lg: 'h-12 w-12 text-base', xl: 'h-16 w-16 text-xl' };
+const SIZE = { xs: 'h-6 w-6 text-3xs', sm: 'h-8 w-8 text-xs', md: 'h-10 w-10 text-sm', lg: 'h-12 w-12 text-base', xl: 'h-16 w-16 text-xl' };
 
 function hash(s: string): number {
   let h = 0;

@@ -56,7 +56,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
     >
       {loading ? <Spinner size={S[size].icon} className="text-current" /> : <Icon size={S[size].icon} strokeWidth={2} aria-hidden />}
       {badge ? (
-        <span className="absolute -right-0.5 -top-0.5 flex min-w-[18px] items-center justify-center rounded-full bg-brand-500 px-1 text-[11px] font-bold leading-[18px] text-white ring-2 ring-surface tabular-nums" aria-hidden>
+        <span className="absolute -right-0.5 -top-0.5 flex min-w-[18px] items-center justify-center rounded-full bg-brand-500 px-1 text-2xs font-bold leading-[18px] text-white ring-2 ring-surface tabular-nums" aria-hidden>
           {typeof badge === 'number' ? (badge > 99 ? '99+' : badge) : ''}
         </span>
       ) : null}
