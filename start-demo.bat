@@ -12,7 +12,7 @@ if errorlevel 1 (
 )
 echo Waiting for the backend to become healthy...
 :wait
-curl -s http://localhost:8000/api/health | find "ok" >nul
+curl -fs http://localhost:8000/api/ready >nul
 if errorlevel 1 (
   timeout /t 2 >nul
   goto wait

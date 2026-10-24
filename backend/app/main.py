@@ -24,6 +24,13 @@ ROUTER_MODULES = [
 ]
 
 
+def _require_migrated() -> None:
+    from sqlalchemy import inspect
+    if "alembic_version" not in inspect(engine).get_table_names():
+        raise RuntimeError("Database schema is not initialised: run `python scripts/migrate.py` before starting "
+                           "the API (set AUTO_CREATE_SCHEMA=true only for throwaway test databases)")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     s = get_settings()
@@ -32,7 +39,10 @@ async def lifespan(app: FastAPI):
     if problems:
         raise RuntimeError("Refusing to start in production: " + "; ".join(problems))
     hub.bind_loop(asyncio.get_running_loop())
-    Base.metadata.create_all(engine)
+    if s.auto_create_schema:
+        Base.metadata.create_all(engine)
+    else:
+        _require_migrated()
     if s.seed_on_startup or s.is_demo:
         try:
             from .seed import seed_if_empty

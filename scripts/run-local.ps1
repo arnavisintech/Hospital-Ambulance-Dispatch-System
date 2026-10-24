@@ -38,6 +38,11 @@ $env:ROUTING_PROVIDER = 'haversine'
 $env:GEO_PROVIDER = 'offline'
 $env:DEMO_AUTOPILOT = $(if ($NoDemo) { 'false' } else { 'true' })
 
+Write-Host 'Migrating the database schema...'
+Push-Location $backend
+try { & $py scripts\migrate.py; if ($LASTEXITCODE -ne 0) { throw 'Database migration failed (see above). For demo data, rerun with -Reset.' } }
+finally { Pop-Location }
+
 $api = Start-Process -FilePath $py -ArgumentList '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8000' `
   -WorkingDirectory $backend -PassThru -NoNewWindow
 $web = Start-Process -FilePath 'npx.cmd' -ArgumentList 'vite', 'preview', '--port', '4173', '--strictPort' `
@@ -45,7 +50,7 @@ $web = Start-Process -FilePath 'npx.cmd' -ArgumentList 'vite', 'preview', '--por
 try {
   Write-Host 'Waiting for the backend...'
   for ($i = 0; $i -lt 120; $i++) {
-    try { if ((Invoke-RestMethod 'http://127.0.0.1:8000/api/health' -TimeoutSec 2).status) { break } } catch { Start-Sleep 1 }
+    try { if ((Invoke-RestMethod 'http://127.0.0.1:8000/api/ready' -TimeoutSec 2).ready) { break } } catch { Start-Sleep 1 }
   }
   Write-Host "HADS is running: http://localhost:4173  (API http://localhost:8000/docs)"
   Wait-Process -Id $api.Id

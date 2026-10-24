@@ -6,6 +6,7 @@ from datetime import timedelta
 _TMP = tempfile.mkdtemp(prefix="hads-test-")
 os.environ["DATABASE_URL"] = f"sqlite:///{_TMP}/test.db"
 os.environ["SEED_ON_STARTUP"] = "false"
+os.environ["AUTO_CREATE_SCHEMA"] = "true"  # test databases skip migrations (test_migrations covers them)
 os.environ["ROUTING_PROVIDER"] = "haversine"
 os.environ["DEMO_AUTOPILOT"] = "false"
 os.environ["GEO_PROVIDER"] = "offline"  # tests never touch the network

@@ -53,7 +53,8 @@ class Settings(BaseSettings):
     audit_retention_years: int = 5  # NFR7 (informational; rows are never deleted)
 
     # Operations
-    log_json: bool = False                 # one JSON object per log line (production log shippers)
+    auto_create_schema: bool = False       # tests / throwaway runs only; real deployments run scripts/migrate.py
+    log_json: bool = False                # one JSON object per log line (production log shippers)
     gps_retention_hours: int = 24          # raw ambulance GPS history (DPDP data minimisation)
     notification_retention_days: int = 30  # read in-app notifications; unread ones are kept
 
