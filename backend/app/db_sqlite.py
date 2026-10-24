@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlalchemy import event
 from sqlalchemy.engine import Engine, make_url
 
-BUSY_TIMEOUT_MS = 5000
+BUSY_TIMEOUT_MS = 15000  # write-lock wait; a 300-request burst exceeded 5 s (loadtest), failing an SOS with 500
 
 
 def configure(engine: Engine) -> None:

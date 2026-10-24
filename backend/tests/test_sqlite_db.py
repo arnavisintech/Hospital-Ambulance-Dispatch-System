@@ -24,7 +24,7 @@ def test_pragmas_applied(tmp_path):
     with eng.connect() as c:
         assert c.execute(text("pragma journal_mode")).scalar() == "wal"
         assert c.execute(text("pragma foreign_keys")).scalar() == 1
-        assert c.execute(text("pragma busy_timeout")).scalar() == 5000
+        assert c.execute(text("pragma busy_timeout")).scalar() == 15000   # an SOS burst must wait, not fail
 
 
 def test_foreign_keys_enforced(tmp_path):
@@ -60,3 +60,36 @@ def test_online_backup_and_prune(tmp_path):
     assert len(left) == 2 and outs[-1] in left
     with sqlite3.connect(outs[-1]) as c:
         assert c.execute("select count(*) from platform_settings").fetchone()[0] == 1
+
+
+def test_connection_pool_is_sized_from_settings():
+    """SQLAlchemy's default pool (5 + 10 overflow) starved an SOS burst; the size is a setting with a larger default."""
+    from app.config import Settings
+    from app.db import engine
+    s = Settings(_env_file=None)
+    assert (s.db_pool_size, s.db_max_overflow) == (20, 40)
+    assert engine.pool.size() == s.db_pool_size and engine.pool._max_overflow == s.db_max_overflow
+
+
+def test_connection_pool_outnumbers_request_threads():
+    """Each in-flight request holds a connection while waiting for its next worker thread; if threads outnumber
+    connections a burst deadlocks (all threads waiting for a connection, all connections waiting for a thread)."""
+    from app.config import Settings
+    s = Settings(_env_file=None)
+    assert s.db_pool_size + s.db_max_overflow >= s.api_threads + 10
+    bad = Settings(_env_file=None, app_env="production", jwt_secret="x" * 40, cors_origins="https://a.example",
+                   data_encryption_key="k", db_pool_size=5, db_max_overflow=10, api_threads=40)
+    assert any("DB_POOL_SIZE" in p for p in bad.production_problems())
+
+
+def test_lifespan_sizes_the_request_thread_pool(monkeypatch):
+    import anyio.to_thread
+    from fastapi.testclient import TestClient
+
+    from app import main
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "api_threads", 33)
+    async def tokens():
+        return anyio.to_thread.current_default_thread_limiter().total_tokens
+    with TestClient(main.app) as c:
+        assert c.portal.call(tokens) == 33   # read inside the app's own event loop

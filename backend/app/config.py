@@ -9,6 +9,11 @@ class Settings(BaseSettings):
 
     app_env: str = "development"  # development | production (production refuses unsafe settings)
     database_url: str = "sqlite:///./data/hads.db"  # or postgresql+psycopg2://...
+    # A request holds its connection while waiting for its next worker thread, so connections must outnumber the
+    # request threads (plus background workers) or a burst deadlocks; production refuses a smaller pool.
+    api_threads: int = 40       # worker threads for sync request handlers (anyio limiter, set at startup)
+    db_pool_size: int = 20      # connections kept open (one backend instance)
+    db_max_overflow: int = 40   # extra connections under burst load (SOS surges)
     jwt_secret: str = "change-me-in-production"
     jwt_expire_minutes: int = 720
     cors_origins: str = "*"  # comma separated
@@ -91,6 +96,8 @@ class Settings(BaseSettings):
             problems.append("DEMO_MODE must be false (demo logins use a published password)")
         if self.demo_autopilot:
             problems.append("DEMO_AUTOPILOT must be false (it drives simulated ambulances)")
+        if self.db_pool_size + self.db_max_overflow < self.api_threads + 10:
+            problems.append("DB_POOL_SIZE + DB_MAX_OVERFLOW must be at least API_THREADS + 10 (a burst would deadlock)")
         if not self.data_encryption_key.strip():
             problems.append("DATA_ENCRYPTION_KEY must be set (patient data is encrypted at rest)")
         return problems

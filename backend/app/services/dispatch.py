@@ -172,25 +172,38 @@ def _dispatch_one(db: Session, req: EmergencyRequest, started: float, silent_if_
     return True
 
 
-def run_dispatch(request_id: int) -> None:
-    """Entry point for the FastAPI background task: own session, severity-ordered, concurrency safe."""
+_kick = threading.Event()   # "there may be requests waiting for a dispatch decision"
+
+
+def run_dispatch(request_id: int | None = None) -> None:
+    """Dispatch every waiting request (received / matching), highest severity first. Never parks the caller: if another
+    thread is already dispatching, this one just flags new work and returns, and that thread drains it before letting go
+    of the lock (an SOS burst would otherwise tie up every server thread waiting on _LOCK). The background watcher calls
+    this every tick as a sweep, so a request whose own dispatch task never ran is still handled. `request_id` is the
+    request that triggered the call (kept for callers and logs; every waiting request is handled)."""
+    _kick.set()
+    while _kick.is_set():
+        if not _LOCK.acquire(blocking=False):
+            return   # the current holder re-checks _kick after releasing and drains our request too
+        try:
+            _kick.clear()
+            _drain()
+        finally:
+            _LOCK.release()
+
+
+def _drain() -> None:
     started = time.perf_counter()
-    with dbmod.SessionLocal() as db, _LOCK:
-        if True:
-            pending = db.execute(select(EmergencyRequest).where(EmergencyRequest.status.in_([RS.received, RS.matching]))
-                                 .order_by(EmergencyRequest.severity.desc(), EmergencyRequest.created_at,
-                                           EmergencyRequest.id)
-                                 .execution_options(populate_existing=True)).scalars().all()
-            for r in pending:  # higher severity first; stop once ours has been handled
-                try:
-                    _dispatch_one(db, r, started)
-                except Exception:
-                    db.rollback()
-                    log.exception("dispatch failed for request %s", r.id)
-                    if r.id == request_id:
-                        raise
-                if r.id == request_id:
-                    break
+    with dbmod.SessionLocal() as db:
+        pending = db.execute(select(EmergencyRequest).where(EmergencyRequest.status.in_([RS.received, RS.matching]))
+                             .order_by(EmergencyRequest.severity.desc(), EmergencyRequest.created_at, EmergencyRequest.id)
+                             .execution_options(populate_existing=True)).scalars().all()
+        for r in pending:
+            try:
+                _dispatch_one(db, r, started)
+            except Exception:  # noqa: BLE001 - one bad request must not block the others
+                db.rollback()
+                log.exception("dispatch failed for request %s", r.id)
 
 
 def retry_escalated() -> list[int]:

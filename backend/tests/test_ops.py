@@ -122,3 +122,32 @@ def test_workers_beat_each_iteration(beats, monkeypatch):
         await asyncio.gather(*tasks, return_exceptions=True)
     asyncio.run(go())
     assert {"ack_timeout", "retention"} <= set(beats)
+
+
+def test_admission_control_caps_in_flight_requests():
+    """At most `limit` HTTP requests run at once; the rest wait before they touch the database (an SOS burst can then
+    never hold every pool connection while waiting for worker threads). Probes are never queued."""
+    import httpx
+
+    from app.middleware import ConcurrencyLimitMiddleware
+    state = {"now": 0, "max": 0}
+
+    async def slow_app(scope, receive, send):
+        state["now"] += 1
+        state["max"] = max(state["max"], state["now"])
+        await asyncio.sleep(0.05)
+        state["now"] -= 1
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    app = ConcurrencyLimitMiddleware(slow_app, limit=3)
+
+    async def go():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+            rs = await asyncio.gather(*(c.get("/api/requests/1") for _ in range(12)))
+            assert all(r.status_code == 200 for r in rs)
+            assert state["max"] == 3
+            state["max"] = 0
+            await asyncio.gather(*(c.get("/api/ready") for _ in range(6)))   # probes bypass the queue
+            assert state["max"] == 6
+    asyncio.run(go())

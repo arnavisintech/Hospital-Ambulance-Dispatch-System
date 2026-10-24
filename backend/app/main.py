@@ -3,6 +3,7 @@ import importlib
 import logging
 from contextlib import asynccontextmanager
 
+import anyio.to_thread
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,7 +13,7 @@ from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .events import hub
 from .logging_setup import configure_logging
-from .middleware import RequestContextMiddleware
+from .middleware import ConcurrencyLimitMiddleware, RequestContextMiddleware
 
 log = logging.getLogger("hads")
 
@@ -35,6 +36,7 @@ def _require_migrated() -> None:
 async def lifespan(app: FastAPI):
     s = get_settings()
     configure_logging(s.log_json)
+    anyio.to_thread.current_default_thread_limiter().total_tokens = s.api_threads  # see Settings.api_threads
     problems = s.production_problems()
     if problems:
         raise RuntimeError("Refusing to start in production: " + "; ".join(problems))
@@ -79,6 +81,7 @@ app = FastAPI(title="HADS - Hospital Ambulance Dispatch System", version="1.0.0"
 app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in get_settings().cors_origins.split(",")],
                    allow_methods=["*"], allow_headers=["*"], allow_credentials=False,
                    expose_headers=["X-Request-ID", "Content-Disposition"])
+app.add_middleware(ConcurrencyLimitMiddleware, limit=get_settings().api_threads)  # admission control (see class)
 app.add_middleware(RequestContextMiddleware)  # outermost: every response and log line carries the request id
 
 for name in ROUTER_MODULES:

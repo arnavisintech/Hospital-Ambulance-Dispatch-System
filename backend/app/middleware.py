@@ -2,10 +2,12 @@
 echoed on the response, bound to every log record and written to the access log."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
 import uuid
+import weakref
 
 from .logging_setup import request_id_var
 
@@ -53,3 +55,31 @@ class RequestContextMiddleware:
                                 extra={"request_id": rid, "method": scope["method"], "path": scope["path"],
                                        "status": status["code"], "ms": ms})
             request_id_var.reset(token)
+
+
+class ConcurrencyLimitMiddleware:
+    """Admission control: at most `limit` API requests are in flight; the rest wait here, holding no DB connection.
+
+    A sync FastAPI request hops between worker threads (auth dependency, endpoint, teardown) and keeps its DB session's
+    connection while it waits for the next thread. Unbounded, an SOS burst parks hundreds of requests that each hold a
+    connection while every worker thread waits for one: a deadlock until the pool timeout. Capping in-flight requests
+    below the pool size (Settings.api_threads vs db_pool_size + db_max_overflow) makes that impossible. Health probes
+    and websockets are never queued.
+    """
+
+    EXEMPT = ("/api/health", "/api/ready")
+
+    def __init__(self, app, limit: int):
+        self.app = app
+        self.limit = limit
+        self._sems: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()   # one per event loop (tests run several)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].startswith("/api/") or scope["path"] in self.EXEMPT:
+            return await self.app(scope, receive, send)
+        loop = asyncio.get_running_loop()
+        sem = self._sems.get(loop)
+        if sem is None:
+            sem = self._sems[loop] = asyncio.Semaphore(self.limit)
+        async with sem:
+            await self.app(scope, receive, send)

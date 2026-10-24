@@ -69,3 +69,62 @@ def test_higher_severity_is_offered_first(world):
         sev = {r.id: r.severity for r in db.execute(select(EmergencyRequest)).scalars()}
         assert [sev[a.request_id] for a in attempts] == [5, 5, 5]
         assert db.get(EmergencyRequest, low_ids[0]).status == RequestStatus.awaiting_manual
+
+
+def test_dispatch_never_parks_the_calling_thread(world):
+    """A burst of SOS must not tie up server threads waiting on the dispatch lock: run_dispatch returns at once when
+    another thread is dispatching, and that thread (or the watcher's sweep) picks the request up."""
+    import threading
+    import time
+
+    _fleet(world, 1)
+    with SessionLocal() as db:
+        req = EmergencyRequest(lat=PATIENT[0], lng=PATIENT[1], severity=3)
+        db.add(req)
+        db.commit()
+        rid = req.id
+    held, release = threading.Event(), threading.Event()
+
+    def holder():
+        with dispatch._LOCK:
+            held.set()
+            release.wait(5)
+    t = threading.Thread(target=holder)
+    t.start()
+    held.wait(5)
+    t0 = time.perf_counter()
+    caller = threading.Thread(target=dispatch.run_dispatch, args=(rid,))
+    caller.start()
+    caller.join(2)
+    assert not caller.is_alive() and time.perf_counter() - t0 < 1.0     # returned instead of waiting
+    release.set()
+    t.join(5)
+    with SessionLocal() as db:
+        assert db.get(EmergencyRequest, rid).status == RequestStatus.received   # lock holder was not a dispatcher
+    dispatch.run_dispatch()                                                   # the watcher's sweep (every tick)
+    with SessionLocal() as db:
+        assert db.get(EmergencyRequest, rid).status == RequestStatus.offered
+
+
+def test_watcher_sweeps_stranded_requests(world, monkeypatch):
+    """A request whose dispatch task never ran (process stopped after the commit) is still dispatched."""
+    import asyncio
+
+    from app.services import background
+    _fleet(world, 1)
+    with SessionLocal() as db:
+        req = EmergencyRequest(lat=PATIENT[0], lng=PATIENT[1], severity=4)
+        db.add(req)
+        db.commit()
+        rid = req.id
+    monkeypatch.setattr(dispatch, "expire_stale_offers", lambda: [])
+    monkeypatch.setattr(dispatch, "retry_escalated", lambda: [])
+
+    async def one_tick():
+        task = asyncio.create_task(background.ack_timeout_loop(0.05))
+        await asyncio.sleep(0.3)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    asyncio.run(one_tick())
+    with SessionLocal() as db:
+        assert db.get(EmergencyRequest, rid).status == RequestStatus.offered

@@ -46,12 +46,14 @@ def stale_workers(now: float | None = None) -> list[str]:
 
 
 async def ack_timeout_loop(tick_s: float = TICK_S) -> None:
-    """Every tick: reassign offers the crew did not acknowledge in time, then retry escalated requests."""
+    """Every tick: reassign offers the crew did not acknowledge in time, retry escalated requests, and sweep requests
+    still waiting for their first dispatch decision."""
     while True:
         beat("ack_timeout")
         try:
             await asyncio.to_thread(dispatch.expire_stale_offers)
             await asyncio.to_thread(dispatch.retry_escalated)
+            await asyncio.to_thread(dispatch.run_dispatch)   # sweep: anything still waiting for a first decision
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - the watcher must never die
