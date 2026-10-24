@@ -252,3 +252,72 @@ def test_admission_queue_wait_is_bounded_with_503():
         hold.set()
         await first
     asyncio.run(go())
+
+
+def _status(sent):
+    return next(m for m in sent if m["type"] == "http.response.start")["status"]
+
+
+def test_admission_rejects_oversized_bodies_by_route():
+    """JSON API bodies are small; only the demographics upload may be large. Content-Length is checked before reading."""
+    from app.middleware import ConcurrencyLimitMiddleware
+
+    async def go():
+        state = {"bodies": []}
+        mw = ConcurrencyLimitMiddleware(_ok_app(state), limit=4)
+
+        async def run(path, size, declared=None):
+            sent, reads = [], []
+            body = b"x" * size
+
+            async def receive():
+                reads.append(1)
+                return {"type": "http.request", "body": body, "more_body": False}
+
+            async def send(m):
+                sent.append(m)
+            headers = [(b"content-length", str(declared if declared is not None else size).encode())]
+            await mw({"type": "http", "path": path, "method": "POST", "headers": headers}, receive, send)
+            return _status(sent), len(reads)
+
+        assert (await run("/api/requests", 300 * 1024))[0] == 413                 # JSON route: 256 KiB cap
+        assert await run("/api/requests", 10, declared=50 * 1024 * 1024) == (413, 0)   # refused before reading
+        assert (await run("/api/admin/demographics/import", 1024 * 1024))[0] == 200   # upload route: 6 MB cap
+        assert (await run("/api/admin/demographics/import", 7 * 1024 * 1024))[0] == 413
+    asyncio.run(go())
+
+
+def test_admission_caps_total_buffered_bytes():
+    """Many large bodies at once cannot exhaust memory: past the aggregate budget the caller gets 503 + Retry-After."""
+    from app.middleware import ConcurrencyLimitMiddleware
+
+    async def go():
+        state = {"bodies": []}
+        mw = ConcurrencyLimitMiddleware(_ok_app(state), limit=4, buffer_budget=1024 * 1024)
+        release = asyncio.Event()
+        sent_a, sent_b = [], []
+
+        async def slow_receive():
+            if not hasattr(slow_receive, "n"):
+                slow_receive.n = 1
+                return {"type": "http.request", "body": b"a" * 900 * 1024, "more_body": True}
+            await release.wait()
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def big_receive():
+            return {"type": "http.request", "body": b"b" * 500 * 1024, "more_body": False}
+
+        async def send_a(m):
+            sent_a.append(m)
+
+        async def send_b(m):
+            sent_b.append(m)
+        scope = {"type": "http", "path": "/api/admin/demographics/import", "method": "POST", "headers": []}
+        a = asyncio.create_task(mw(scope, slow_receive, send_a))
+        await asyncio.sleep(0.01)
+        await mw(dict(scope), big_receive, send_b)                 # would take the total past 1 MiB
+        assert _status(sent_b) == 503
+        release.set()
+        await a
+        assert _status(sent_a) == 200
+    asyncio.run(go())

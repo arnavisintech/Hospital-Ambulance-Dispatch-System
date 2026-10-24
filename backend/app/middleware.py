@@ -67,18 +67,23 @@ class ConcurrencyLimitMiddleware:
     below the pool size (Settings.api_threads vs db_pool_size + db_max_overflow) makes that impossible.
 
     A slot covers only the server's own work, so a slow client cannot hold one: the request body is read in full
-    before a slot is taken (bounded by MAX_BODY), and the slot is released when the response starts (FastAPI closes the
-    request's DB session before sending). Waiting for a slot is bounded: after `wait_s` the caller gets 503 with
-    Retry-After (the SOS screen queues and resends). Health probes and websockets are never queued.
+    before a slot is taken, and the slot is released when the response starts (FastAPI closes the request's DB session
+    before sending). Waiting for a slot is bounded: after `wait_s` the caller gets 503 with Retry-After (the SOS screen
+    queues and resends). Buffering is bounded too: per route (JSON calls are small; only the CSV upload is large, the
+    same 6 MB nginx allows), an oversized Content-Length is refused before reading, and all bodies being buffered at
+    once share `buffer_budget` bytes (beyond it: 503). Health probes and websockets are never queued.
     """
 
     EXEMPT = ("/api/health", "/api/ready")
-    MAX_BODY = 10 * 1024 * 1024
+    MAX_JSON_BODY = 256 * 1024
+    UPLOAD_ROUTES = {"/api/admin/demographics/import": 6 * 1024 * 1024}
 
-    def __init__(self, app, limit: int, wait_s: float = 15.0):
+    def __init__(self, app, limit: int, wait_s: float = 15.0, buffer_budget: int = 64 * 1024 * 1024):
         self.app = app
         self.limit = limit
         self.wait_s = wait_s
+        self.buffer_budget = buffer_budget
+        self._buffered = 0   # bytes held by in-progress requests' bodies (single event loop per process)
         self._sems: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()   # one per event loop (tests run several)
 
     def _sem(self) -> asyncio.Semaphore:
@@ -91,25 +96,41 @@ class ConcurrencyLimitMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or not scope["path"].startswith("/api/") or scope["path"] in self.EXEMPT:
             return await self.app(scope, receive, send)
-        body, size = [], 0
-        while True:                                   # read the body before taking a slot
-            message = await receive()
-            if message["type"] == "http.disconnect":
-                return
-            chunk = message.get("body", b"")
-            size += len(chunk)
-            if size > self.MAX_BODY:
-                return await _plain(send, 413, b'{"detail":"Request body too large"}')
-            body.append(chunk)
-            if not message.get("more_body"):
-                break
+        cap = self.UPLOAD_ROUTES.get(scope["path"], self.MAX_JSON_BODY)
+        declared = dict(scope.get("headers") or []).get(b"content-length")
+        if declared is not None and declared.isdigit() and int(declared) > cap:
+            return await _plain(send, 413, b'{"detail":"Request body too large"}')   # refused before reading
+        held = 0   # bytes this request counts against the budget until it finishes (its body waits for a slot)
+        try:
+            chunks = []
+            while True:                               # read the body before taking a slot
+                message = await receive()
+                if message["type"] == "http.disconnect":
+                    return
+                chunk = message.get("body", b"")
+                held += len(chunk)
+                self._buffered += len(chunk)
+                if held > cap:
+                    return await _plain(send, 413, b'{"detail":"Request body too large"}')
+                if self._buffered > self.buffer_budget:
+                    return await _plain(send, 503, b'{"detail":"Server busy, retry shortly"}', [(b"retry-after", b"2")])
+                chunks.append(chunk)
+                if not message.get("more_body"):
+                    break
+            body = b"".join(chunks)
+            chunks.clear()
+            await self._run(scope, body, receive, send)
+        finally:
+            self._buffered -= held
+
+    async def _run(self, scope, body: bytes, receive, send) -> None:
         replayed = False
 
         async def replay():
             nonlocal replayed
             if not replayed:
                 replayed = True
-                return {"type": "http.request", "body": b"".join(body), "more_body": False}
+                return {"type": "http.request", "body": body, "more_body": False}
             return await receive()                    # after the body: disconnect notifications
 
         sem = self._sem()
