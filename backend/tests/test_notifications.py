@@ -84,3 +84,22 @@ def test_pushed_on_user_topic_after_commit(client, world, published):
     pushes = [(t, ty, d) for t, ty, d in published if t == f"user:{ctl['id']}"]
     assert pushes and pushes[0][1] == "notification" and pushes[0][2]["type"] == "dispatch.escalated"
     assert pushes[0][2]["id"]  # a real row id: published only once the row was committed
+
+
+def test_crew_non_response_is_flagged_for_controller_review(client, world, monkeypatch):
+    """UC-2 E1: an unacknowledged offer is reassigned AND flagged to controllers for review."""
+    from datetime import timedelta
+
+    from app.config import get_settings
+    from app.models import utcnow
+    from app.services import dispatch
+    ctl, user = world.user(Role.controller), world.user()
+    st = world.station(world.hospital())
+    world.ambulance(st, lat=13.085, lng=80.272)
+    world.ambulance(st, lat=13.10, lng=80.29)
+    sos(client, user["h"])
+    monkeypatch.setattr(get_settings(), "crew_ack_timeout_s", 30)
+    dispatch.expire_stale_offers(now=utcnow() + timedelta(seconds=31))
+    items = client.get("/api/notifications", headers=ctl["h"]).json()
+    flagged = [i for i in items if i["type"] == "dispatch.no_response"]
+    assert len(flagged) == 1 and "TN01AB" in flagged[0]["body"] and flagged[0]["data"]["request_id"]

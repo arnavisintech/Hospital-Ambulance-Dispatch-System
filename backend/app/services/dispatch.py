@@ -222,6 +222,12 @@ def release_offer(db: Session, req: EmergencyRequest, status: AttemptStatus, use
     trips.transition(req, RS.matching, user_id, status.value)
     audit.log(db, f"dispatch.{status.value}", "request", req.id, user_id,
               {"ambulance_id": attempt.ambulance_id, "reason": reason, "attempt_rank": attempt.rank})
+    if status == AttemptStatus.timeout:  # UC-2 E1: flag the non-response for controller review
+        amb = db.get(Ambulance, attempt.ambulance_id)
+        notify.notify_role(db, Role.controller, "dispatch.no_response", f"No response to request #{req.id}",
+                           f"Crew of {amb.registration_number if amb else f'ambulance #{attempt.ambulance_id}'} "
+                           "did not acknowledge in time · reassigned",
+                           {"request_id": req.id, "ambulance_id": attempt.ambulance_id})
     db.commit()
     trips.publish_status(req, {"reassigning": True})
     return True
