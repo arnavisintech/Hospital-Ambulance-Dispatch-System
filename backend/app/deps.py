@@ -1,10 +1,11 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .models import Role, User
+from .models import ApiClient, Role, User
 from .security import decode_token
+from .services import interop
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -26,6 +27,14 @@ def current_user(cred: HTTPAuthorizationCredentials | None = Depends(bearer), db
     if cred is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
     return user_from_token(db, cred.credentials)
+
+
+def require_api_client(x_api_key: str | None = Header(default=None), db: Session = Depends(get_db)) -> ApiClient:
+    """Interop callers (external dispatch centres) authenticate with `X-API-Key`, never a user session."""
+    client = interop.client_for_key(db, x_api_key)
+    if client is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or inactive API key")
+    return client
 
 
 def require_roles(*roles: Role):

@@ -198,12 +198,16 @@ class AmbulanceLocation(Base):
 
 class EmergencyRequest(Base):
     __tablename__ = "emergency_requests"
+    # An external centre's incident id is unique per centre, so two centres can never collide or read each other's.
+    __table_args__ = (UniqueConstraint("api_client_id", "external_id", name="uq_request_external"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     client_uuid: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)  # idempotent retry (UC-1 E1)
     requester_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     caller_name: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)   # PII: encrypted at rest (NFR3)
     caller_phone: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
-    channel: Mapped[str] = mapped_column(String(8), default="app")  # app | ivr
+    channel: Mapped[str] = mapped_column(String(8), default="app")  # app | ivr | external
+    api_client_id: Mapped[int | None] = mapped_column(ForeignKey("api_clients.id"), nullable=True)  # channel=external
+    external_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     lat: Mapped[float] = mapped_column(Float)
     lng: Mapped[float] = mapped_column(Float)
     address: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
@@ -409,6 +413,17 @@ class Notification(Base):
     data: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ApiClient(Base):
+    """External dispatch centre (108/102-style CAD) calling the interop API (NFR8). Only the key's SHA-256 is stored."""
+    __tablename__ = "api_clients"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ShareLink(Base):

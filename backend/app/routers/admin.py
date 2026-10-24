@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 from .. import audit, demographics
 from ..db import get_db
 from ..deps import require_roles
-from ..models import Ambulance, AmbulanceStatus, DarkStation, Hospital, Role, User, utcnow
+from ..models import Ambulance, AmbulanceStatus, ApiClient, DarkStation, Hospital, Role, User, utcnow
 from ..security import hash_password
-from ..services import onboarding as ob
+from ..services import interop, onboarding as ob
 from ..services.billing import get_platform_settings
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -215,6 +215,67 @@ def reset_password(user_id: int, db: Session = Depends(get_db), admin: User = De
     audit.log(db, "admin.user.reset_password", "user", u.id, admin.id, {})
     db.commit()
     return {"temporary_password": temp}
+
+
+# ------------------------------------------------------------------ interop API clients (external dispatch centres)
+class ApiClientIn(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+
+
+def _api_client_out(c: ApiClient, key: str | None = None) -> dict:
+    out = {"id": c.id, "name": c.name, "is_active": c.is_active,
+           "created_at": c.created_at.isoformat() if c.created_at else None,
+           "last_used_at": c.last_used_at.isoformat() if c.last_used_at else None}
+    if key:
+        out["api_key"] = key  # shown once; only its hash is stored
+    return out
+
+
+def _get_api_client(db: Session, client_id: int) -> ApiClient:
+    c = db.get(ApiClient, client_id)
+    if c is None:
+        raise HTTPException(404, "API client not found")
+    return c
+
+
+@router.get("/api-clients")
+def list_api_clients(db: Session = Depends(get_db), _: User = Depends(_admin)):
+    return [_api_client_out(c) for c in db.execute(select(ApiClient).order_by(ApiClient.id)).scalars()]
+
+
+@router.post("/api-clients", status_code=201)
+def create_api_client(body: ApiClientIn, db: Session = Depends(get_db), user: User = Depends(_admin)):
+    name = body.name.strip()
+    if db.execute(select(ApiClient).where(func.lower(ApiClient.name) == name.lower())).scalar_one_or_none():
+        raise HTTPException(409, "An API client with this name already exists")
+    key = interop.new_key()
+    c = ApiClient(name=name, key_hash=interop.hash_key(key))
+    db.add(c)
+    db.flush()
+    audit.log(db, "admin.api_client.create", "api_client", c.id, user.id, {"name": name})
+    db.commit()
+    return _api_client_out(c, key)
+
+
+@router.post("/api-clients/{client_id}/rotate")
+def rotate_api_client(client_id: int, db: Session = Depends(get_db), user: User = Depends(_admin)):
+    """Issue a new key; the old one stops working immediately."""
+    c = _get_api_client(db, client_id)
+    key = interop.new_key()
+    c.key_hash = interop.hash_key(key)
+    c.is_active = True
+    audit.log(db, "admin.api_client.rotate", "api_client", c.id, user.id, {})
+    db.commit()
+    return _api_client_out(c, key)
+
+
+@router.post("/api-clients/{client_id}/deactivate")
+def deactivate_api_client(client_id: int, db: Session = Depends(get_db), user: User = Depends(_admin)):
+    c = _get_api_client(db, client_id)
+    c.is_active = False
+    audit.log(db, "admin.api_client.deactivate", "api_client", c.id, user.id, {})
+    db.commit()
+    return _api_client_out(c)
 
 
 # ------------------------------------------------------------------ demographics (demand model inputs)
