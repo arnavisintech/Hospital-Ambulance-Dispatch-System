@@ -43,6 +43,8 @@ export default function Hospital() {
   return <HospitalDesk hid={hid} />;
 }
 
+interface EtaSnap { eta: number | null; at: number }
+
 function HospitalDesk({ hid }: { hid: number }) {
   const { success, error, info } = useToast();
   const now = useNow(1000);
@@ -50,26 +52,33 @@ function HospitalDesk({ hid }: { hid: number }) {
 
   /* ------------------------------------------------------------------ data */
   const hosp = useAsync(() => get<HospitalBrief>(`/hospitals/${hid}`), [hid], 60000);
-  const incoming = useAsync(async () => normalizeIncomingList(await get<unknown>(`/hospitals/${hid}/incoming`)), [hid], 10000);
+  // ETA snapshots: eta + time received, so the countdown ticks locally between updates. Stamped here and in the
+  // live handler (never during render); an unchanged ETA keeps its original stamp so the countdown continues.
+  const [snaps, setSnaps] = useState<Map<number, EtaSnap>>(() => new Map());
+  const incoming = useAsync(async () => {
+    const list = normalizeIncomingList(await get<unknown>(`/hospitals/${hid}/incoming`));
+    const t = Date.now();
+    setSnaps((prev) => {
+      const next = new Map(prev);
+      list.forEach((i) => {
+        const s = next.get(i.request.id);
+        if (!s || s.eta !== i.eta_seconds) next.set(i.request.id, { eta: i.eta_seconds, at: t });
+      });
+      return next;
+    });
+    return list;
+  }, [hid], 10000);
   const handovers = useAsync(async () => {
     try { return await get<HandoverRow[]>(`/hospitals/${hid}/handovers`, { limit: 10 }); }
     catch (e) { if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return null; throw e; } // v1: not available
   }, [hid], 60000);
 
-  // ETA snapshots: eta + time received, so the countdown ticks locally between updates.
-  const snaps = useRef(new Map<number, { eta: number | null; at: number }>());
-  const [, bump] = useState(0);
   const known = useRef<Set<number> | null>(null);
   const [fresh, setFresh] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const list = incoming.data;
     if (!list) return;
-    const t = Date.now();
-    list.forEach((i) => {
-      const s = snaps.current.get(i.request.id);
-      if (!s || s.eta !== i.eta_seconds) snaps.current.set(i.request.id, { eta: i.eta_seconds, at: t });
-    });
     const ids = new Set(list.map((i) => i.request.id));
     if (known.current) {
       const added = list.filter((i) => !known.current!.has(i.request.id));
@@ -89,8 +98,8 @@ function HospitalDesk({ hid }: { hid: number }) {
   const onMsg = useCallback((m: WsMessage) => {
     const d = (m.data ?? {}) as Record<string, unknown>;
     if (m.type === 'ambulance.location' && typeof d.request_id === 'number' && typeof d.eta_seconds === 'number') {
-      snaps.current.set(d.request_id, { eta: d.eta_seconds, at: Date.now() });
-      bump((x) => x + 1);
+      const snap = { eta: d.eta_seconds, at: Date.now() };
+      setSnaps((prev) => new Map(prev).set(d.request_id as number, snap));
       return;
     }
     if (m.type === 'trip.closed') { void reloadIncoming(); void reloadHandovers(); return; }
@@ -181,7 +190,7 @@ function HospitalDesk({ hid }: { hid: number }) {
             <ul className="space-y-3" aria-live="polite">
               <AnimatePresence initial={false}>
                 {list.map((i) => {
-                  const s = snaps.current.get(i.request.id);
+                  const s = snaps.get(i.request.id);
                   const remaining = s ? etaRemaining(s.eta, s.at, now) : i.eta_seconds;
                   return (
                     <IncomingCard key={i.request.id} item={i} remaining={remaining} now={now} fresh={fresh.has(i.request.id)}
@@ -349,18 +358,18 @@ function CapacityEditor({ h, specs, stale, onSaved, onRevert }: {
   const changes = capacityDiff(base, draft, humanize);
   const dirty = changes.length > 0;
   const baseKey = JSON.stringify(base);
-  // Server values changed (another staff member, poll) while not editing → follow them.
-  const lastBase = useRef(baseKey);
-  useEffect(() => {
-    if (lastBase.current !== baseKey) { lastBase.current = baseKey; if (!busy) setDraft(base); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseKey]);
+  // Server values changed (another staff member, poll) while not saving → follow them (adjusted during render).
+  const [lastBase, setLastBase] = useState(baseKey);
+  if (lastBase !== baseKey) {
+    setLastBase(baseKey);
+    if (!busy) setDraft(base);
+  }
 
   const save = async () => {
     const prev = h;
     const optimistic: HospitalBrief = { ...h, available_beds: draft.beds, available_icu: draft.icu, specialists: draft.specialists as unknown as HospitalBrief['specialists'], capacity_updated_at: new Date().toISOString(), stale: false };
     setBusy(true);
-    lastBase.current = JSON.stringify({ beds: draft.beds, icu: draft.icu, specialists: draft.specialists });
+    setLastBase(JSON.stringify({ beds: draft.beds, icu: draft.icu, specialists: draft.specialists }));
     onSaved(optimistic);
     try {
       const out = await put<HospitalBrief>(`/hospitals/${h.id}/capacity`, { available_beds: draft.beds, available_icu: draft.icu, specialists: draft.specialists });

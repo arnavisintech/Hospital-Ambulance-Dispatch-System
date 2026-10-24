@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Ambulance, CheckCheck, Hospital, Link2Off, MapPin } from 'lucide-react';
 import { MobileAppLayout } from '../../components/layout/MobileAppLayout';
@@ -52,7 +52,7 @@ export default function ShareTrack() {
   );
   const { data, error, reload } = state;
   const { overlay, onMessage } = useLiveOverlay(data, () => void reload());
-  handler.current = onMessage;
+  useLayoutEffect(() => { handler.current = onMessage; });
 
   if (!data) {
     if (error) {

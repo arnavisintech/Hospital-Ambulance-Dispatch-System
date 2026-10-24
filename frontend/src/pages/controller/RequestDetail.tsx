@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   AlertTriangle, Ambulance, BedDouble, Building2, Clock, ExternalLink, Gauge, HeartPulse, Hospital, MapPin, Phone,
   Radio, RefreshCw, Route, UserRound, X, XCircle,
@@ -359,7 +359,11 @@ function CloseTripDialog({ open, onClose, req, onDone }: { open: boolean; onClos
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [touched, setTouched] = useState(false);
-  useEffect(() => { if (open) { setReason(''); setTouched(false); } }, [open]);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {   // a fresh form every time the dialog opens (adjusted during render)
+    setWasOpen(open);
+    if (open) { setReason(''); setTouched(false); }
+  }
   const submit = async () => {
     setTouched(true);
     if (!reason.trim()) return;

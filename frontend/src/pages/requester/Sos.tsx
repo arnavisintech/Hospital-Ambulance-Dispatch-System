@@ -22,6 +22,7 @@ type LocSource = 'none' | 'gps' | 'pin' | 'search';
 
 const DEFAULT_SEVERITY = 3; // "Serious": err on the side of urgency when the caller doesn't choose
 const PEEK = 0.5;
+const HAS_GPS = typeof navigator !== 'undefined' && 'geolocation' in navigator;
 
 /**
  * Home / SOS (UC-1). NFR5: open → (GPS fix + defaults) → tap "Request ambulance" = submitted.
@@ -38,8 +39,8 @@ export default function Sos() {
 
   const [center, setCenter] = useState<LatLng>(CHENNAI);
   const [source, setSource] = useState<LocSource>('none');
-  const [locating, setLocating] = useState(true);
-  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [locating, setLocating] = useState(HAS_GPS);   // a GPS fix is requested as soon as the screen opens
+  const [gpsError, setGpsError] = useState<string | null>(HAS_GPS ? null : 'Location isn’t available on this device');
   const [place, setPlace] = useState<ReversePlace | null>(null);
   const [placeLoading, setPlaceLoading] = useState(false);
   const geoMissing = useRef(false);
@@ -63,9 +64,9 @@ export default function Sos() {
     else setCenter(p);
   }, []);
 
-  const locate = useCallback(() => {
-    if (!('geolocation' in navigator)) { setLocating(false); setGpsError('Location isn’t available on this device'); return; }
-    setLocating(true);
+  // Ask the device for a fix; results arrive in callbacks (no state is set synchronously here).
+  const requestFix = useCallback(() => {
+    if (!HAS_GPS) return;
     navigator.geolocation.getCurrentPosition(
       (g) => {
         setLocating(false);
@@ -80,7 +81,12 @@ export default function Sos() {
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
     );
   }, [flyTo]);
-  useEffect(() => { locate(); }, [locate]);
+  useEffect(() => { requestFix(); }, [requestFix]);
+  const locate = useCallback(() => {   // "use my location" button
+    if (!HAS_GPS) return;
+    setLocating(true);
+    requestFix();
+  }, [requestFix]);
 
   const onCenter = useCallback((c: LatLng) => {
     setCenter(c);

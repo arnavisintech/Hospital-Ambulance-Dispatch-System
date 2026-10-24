@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Ambulance, CheckCircle2, List, Map as MapIcon, PhoneCall, Shuffle, Siren, Volume2, VolumeX } from 'lucide-react';
 import { useConsolePage } from '../../components/layout';
@@ -45,7 +45,7 @@ export default function Controller() {
   const alerted = useRef<Set<number> | null>(null);
   const [soundOn, toggleSound] = useSoundPref('hads.controller.sound');
   const soundRef = useRef(soundOn);
-  soundRef.current = soundOn;
+  useLayoutEffect(() => { soundRef.current = soundOn; });
 
   const [tab, setTab] = useState<PanelTab>('active');
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -164,10 +164,8 @@ export default function Controller() {
   const selected = board?.requests.find((r) => r.id === selectedId) ?? null;
   const list = tab === 'escalations' ? escalated : active;
 
-  // Selected request finished → close the panel gracefully.
-  useEffect(() => {
-    if (selectedId !== null && board && !board.requests.some((r) => r.id === selectedId)) setSelectedId(null);
-  }, [board, selectedId]);
+  // Selected request finished → close the panel (adjusted during render, so it never shows a stale request).
+  if (selectedId !== null && board && !board.requests.some((r) => r.id === selectedId)) setSelectedId(null);
 
   const moves = useMemo<MoveLine[]>(() => {
     if (tab !== 'rebalance' || !board || !recs.data) return [];
@@ -190,7 +188,7 @@ export default function Controller() {
 
   /* ------------------------------------------------------------------ keyboard: Esc, J/K, N */
   const listRef = useRef(list);
-  listRef.current = list;
+  useLayoutEffect(() => { listRef.current = list; });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || modalOpen() || isTypingTarget(e.target)) return;

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { LocateFixed, MapPin, Search } from 'lucide-react';
 import { Input, Modal, Spinner } from '../../../components/ui';
-import { ApiError, get } from '../../../lib/api';
+import { usePlaceSearch } from '../../../hooks/usePlaceSearch';
+import { ApiError } from '../../../lib/api';
 import type { PlaceResult } from '../../../lib/types';
 
 /** Debounced place search (GET /geo/search). Degrades to a hint when the endpoint is missing (404). */
@@ -9,34 +10,10 @@ export function PlaceSearch({ open, onClose, onPick, onUseGps }: {
   open: boolean; onClose: () => void; onPick: (p: PlaceResult) => void; onUseGps: () => void;
 }) {
   const [q, setQ] = useState('');
-  const [results, setResults] = useState<PlaceResult[] | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const seq = useRef(0);
-
-  useEffect(() => {
-    const term = q.trim();
-    if (term.length < 2) { setResults(null); setMsg(null); return; }
-    const my = ++seq.current;
-    const t = setTimeout(async () => {
-      setBusy(true);
-      try {
-        const r = await get<PlaceResult[]>('/geo/search', { q: term });
-        if (my !== seq.current) return;
-        setResults(Array.isArray(r) ? r : []);
-        setMsg(null);
-      } catch (e) {
-        if (my !== seq.current) return;
-        setResults([]);
-        setMsg(e instanceof ApiError && e.status === 404
-          ? 'Search isn’t available right now — close this and move the map to your location.'
-          : 'Couldn’t search — check your connection, or move the map to your location.');
-      } finally {
-        if (my === seq.current) setBusy(false);
-      }
-    }, 350);
-    return () => clearTimeout(t);
-  }, [q]);
+  const { results, loading: busy, error } = usePlaceSearch(q, 350);
+  const msg = !error ? null : error instanceof ApiError && error.status === 404
+    ? 'Search isn’t available right now — close this and move the map to your location.'
+    : 'Couldn’t search — check your connection, or move the map to your location.';
 
   return (
     <Modal open={open} onClose={onClose} title="Set pickup location" size="md">

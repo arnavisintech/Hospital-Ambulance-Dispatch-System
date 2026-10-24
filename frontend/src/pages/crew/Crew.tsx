@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Ambulance, BedDouble, Clock, ExternalLink, Gauge, Hospital, MapPin, Navigation, Phone, Route as RouteIcon, Satellite, Timer, Warehouse,
 } from 'lucide-react';
@@ -22,6 +22,7 @@ import { crewAction, crewPhase, nextManeuver } from './nav';
 
 const REPORT_MS = 3000;
 const ROUTE_REFRESH_MS = 45000;
+const HAS_GPS = typeof navigator !== 'undefined' && 'geolocation' in navigator;
 
 /* ------------------------------------------------------------------ alerts for a new offer */
 
@@ -95,15 +96,15 @@ export default function Crew() {
   /* ---- GPS reporting (every ~3 s) or simulated drive ---- */
   const [simulate, setSimulate] = useState(false);
   const [pos, setPos] = useState<LatLng | null>(null);
-  const [gpsErr, setGpsErr] = useState<string | null>(null);
+  const [gpsWatchErr, setGpsErr] = useState<string | null>(null);
+  const gpsErr = HAS_GPS ? gpsWatchErr : 'GPS not available on this device';
   const lastSent = useRef(0);
   const sendLoc = useCallback(async (p: LatLng) => {
     try { await post('/crew/location', { lat: p[0], lng: p[1] }); } catch { /* transient; next tick retries */ }
   }, []);
 
   useEffect(() => {
-    if (!onDuty || simulate) return;
-    if (!('geolocation' in navigator)) { setGpsErr('GPS not available on this device'); return; }
+    if (!onDuty || simulate || !HAS_GPS) return;
     const id = navigator.geolocation.watchPosition(
       (g) => {
         setGpsErr(null);
@@ -121,10 +122,10 @@ export default function Crew() {
   const simPath = useMemo(() => densify(poly, 120), [poly]);
   const simIdx = useRef(0);
   const posRef = useRef(pos);
-  posRef.current = pos;
+  useLayoutEffect(() => { posRef.current = pos; });
   const serverPos: LatLng | null = c?.ambulance?.lat != null && c.ambulance.lng != null ? [c.ambulance.lat, c.ambulance.lng] : null;
   const serverPosRef = useRef(serverPos);
-  serverPosRef.current = serverPos;
+  useLayoutEffect(() => { serverPosRef.current = serverPos; });
   useEffect(() => { simIdx.current = 0; }, [simPath]);
   useEffect(() => {
     if (!simulate || !onDuty) return;

@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!getToken()) { setLoading(false); return; }
+    if (!getToken()) return; // `loading` already started false: there is no session to restore
     let alive = true;
     get<User>('/auth/me')
       .then((u) => { if (alive) setUser(u); })

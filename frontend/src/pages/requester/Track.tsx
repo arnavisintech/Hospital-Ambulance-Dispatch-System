@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { MobileAppLayout } from '../../components/layout/MobileAppLayout';
 import { ErrorState, LoadingBlock } from '../../components/ui';
@@ -25,7 +25,7 @@ export default function Track() {
   const state = useAsync(() => get<Tracking>(`/requests/${id}/tracking`), [id, connected], connected ? 20000 : 6000);
   const { data, error, reload } = state;
   const { overlay, onMessage } = useLiveOverlay(data, () => void reload());
-  handler.current = onMessage;
+  useLayoutEffect(() => { handler.current = onMessage; });
 
   if (!data) {
     if (error) {

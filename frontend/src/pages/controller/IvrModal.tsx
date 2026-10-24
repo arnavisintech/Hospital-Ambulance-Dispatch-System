@@ -3,6 +3,7 @@ import type L from 'leaflet';
 import { Loader2, MapPin, Phone, Search, Send, UserRound } from 'lucide-react';
 import { MapCanvas } from '../../components/map';
 import { Button, Input, Modal, Textarea, useToast } from '../../components/ui';
+import { usePlaceSearch } from '../../hooks/usePlaceSearch';
 import { get, post } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { CHENNAI } from '../../lib/geo';
@@ -39,25 +40,27 @@ function IvrForm({ onCreated, center, onCancel }: { onCreated: (r: RequestOut) =
   const [pos, setPos] = useState<LatLng | null>(null);
   const [address, setAddress] = useState('');
   const [addrEdited, setAddrEdited] = useState(false);
-  const [place, setPlace] = useState<ReversePlace | null>(null);
-  const [resolving, setResolving] = useState(false);
+  // Reverse-geocoded address, keyed by the pin it describes: `resolving` is derived (current pin not answered yet).
+  const [geo, setGeo] = useState<{ key: string; place: ReversePlace | null } | null>(null);
+  const posKey = pos ? `${pos[0].toFixed(6)},${pos[1].toFixed(6)}` : null;
+  const resolving = posKey !== null && geo?.key !== posKey;
+  const place = geo?.place ?? null;
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const map = useRef<L.Map | null>(null);
 
   // Reverse-geocode the pin (debounced). Degrades to coordinates when /geo is unavailable.
   useEffect(() => {
-    if (!pos) return;
+    if (!posKey) return;
     let alive = true;
-    setResolving(true);
+    const [lat, lng] = posKey.split(',');
     const t = setTimeout(() => {
-      get<ReversePlace>('/geo/reverse', { lat: pos[0].toFixed(6), lng: pos[1].toFixed(6) })
-        .then((p) => { if (!alive) return; setPlace(p); if (!addrEdited) setAddress(p.address || p.label || ''); })
-        .catch(() => { if (alive) setPlace(null); })
-        .finally(() => { if (alive) setResolving(false); });
+      get<ReversePlace>('/geo/reverse', { lat, lng })
+        .then((p) => { if (!alive) return; setGeo({ key: posKey, place: p }); if (!addrEdited) setAddress(p.address || p.label || ''); })
+        .catch(() => { if (alive) setGeo({ key: posKey, place: null }); });
     }, 450);
     return () => { alive = false; clearTimeout(t); };
-  }, [pos, addrEdited]);
+  }, [posKey, addrEdited]);
 
   const phoneErr = submitted && phone && !PHONE_RE.test(phone) ? 'Enter a valid phone number' : undefined;
   const incErr = submitted && !incident ? 'Pick what happened' : undefined;
@@ -165,26 +168,16 @@ function IvrForm({ onCreated, center, onCancel }: { onCreated: (r: RequestOut) =
 /** Debounced locality search (GET /geo/search) with a results listbox. */
 function PlaceSearch({ onPick }: { onPick: (p: PlaceResult) => void }) {
   const [q, setQ] = useState('');
-  const [results, setResults] = useState<PlaceResult[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const found = usePlaceSearch(q);
+  const [picked, setPicked] = useState<string | null>(null);   // the list closes once a place is chosen
+  const results = picked !== null && q === picked ? null : found.results;
+  const loading = found.loading && q !== picked;
+  const failed = !!found.error;
   const [active, setActive] = useState(0);
+  const [activeFor, setActiveFor] = useState(results);
+  if (activeFor !== results) { setActiveFor(results); setActive(0); }   // new results: highlight the first
 
-  useEffect(() => {
-    const term = q.trim();
-    if (term.length < 2) { setResults(null); setFailed(false); return; }
-    let alive = true;
-    setLoading(true);
-    const t = setTimeout(() => {
-      get<PlaceResult[]>('/geo/search', { q: term })
-        .then((r) => { if (alive) { setResults(Array.isArray(r) ? r.slice(0, 6) : []); setActive(0); setFailed(false); } })
-        .catch(() => { if (alive) { setResults([]); setFailed(true); } })
-        .finally(() => { if (alive) setLoading(false); });
-    }, 300);
-    return () => { alive = false; clearTimeout(t); };
-  }, [q]);
-
-  const pick = (p: PlaceResult) => { onPick(p); setQ(p.label); setResults(null); };
+  const pick = (p: PlaceResult) => { onPick(p); setQ(p.label); setPicked(p.label); };
   const open = results !== null;
 
   return (
@@ -199,7 +192,7 @@ function PlaceSearch({ onPick }: { onPick: (p: PlaceResult) => void }) {
           if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => (a + 1) % results.length); }
           else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => (a - 1 + results.length) % results.length); }
           else if (e.key === 'Enter') { e.preventDefault(); pick(results[active]); }
-          else if (e.key === 'Escape') { e.stopPropagation(); setResults(null); }
+          else if (e.key === 'Escape') { e.stopPropagation(); setPicked(q); }   // close until the text changes
         }}
         trailing={loading ? <Loader2 size={16} className="mr-2 animate-spin text-ink-400" aria-hidden /> : undefined}
       />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { errMsg } from '../lib/api';
 
 export interface AsyncState<T> {
@@ -14,12 +14,17 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = [], pollMs =
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // New deps mean a fresh (non-silent) load: flip `loading` while rendering, not in an effect afterwards.
+  const [prevDeps, setPrevDeps] = useState(deps);
+  if (!sameDeps(prevDeps, deps)) {
+    setPrevDeps(deps);
+    setLoading(true);
+  }
   const fnRef = useRef(fn);
-  fnRef.current = fn;
+  useLayoutEffect(() => { fnRef.current = fn; });
   const alive = useRef(true);
 
-  const run = useCallback(async (silent: boolean) => {
-    if (!silent) setLoading(true);
+  const run = useCallback(async () => {
     try {
       const d = await fnRef.current();
       if (alive.current) { setData(d); setError(null); }
@@ -32,13 +37,17 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = [], pollMs =
 
   useEffect(() => {
     alive.current = true;
-    void run(false);
+    void run();
     let t: ReturnType<typeof setInterval> | undefined;
-    if (pollMs > 0) t = setInterval(() => void run(true), pollMs);
+    if (pollMs > 0) t = setInterval(() => void run(), pollMs);
     return () => { alive.current = false; if (t) clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  const reload = useCallback(() => run(true), [run]);
+  const reload = useCallback(() => run(), [run]);
   return { data, error, loading, reload, setData };
+}
+
+function sameDeps(a: unknown[], b: unknown[]): boolean {
+  return a.length === b.length && a.every((x, i) => Object.is(x, b[i]));
 }

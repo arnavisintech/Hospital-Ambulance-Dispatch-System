@@ -5,12 +5,14 @@ import { useAsync } from '../../hooks/useAsync';
 import { get, post } from '../../lib/api';
 import { fmtMoney, fmtRelative } from '../../lib/format';
 import type { Bill } from '../admin/shared/types';
+import { useNow } from '../controller/live';
 import { PAY_METHODS } from '../requester/trip';
 
 /** Bills for trips handed over here that are still unpaid. Staff record what the billing desk collected. */
 export function PaymentsDue() {
   const { success, error } = useToast();
   const bills = useAsync(() => get<Bill[]>('/billing', { payment_status: 'pending', limit: 50 }), [], 60000);
+  const now = useNow(60000); // relative ages ('3 hours ago') refresh each minute
   const [open, setOpen] = useState<Bill | null>(null);
   const [method, setMethod] = useState<string>('upi');
   const [reference, setReference] = useState('');
@@ -44,7 +46,7 @@ export function PaymentsDue() {
             <li key={b.id} className="flex items-center gap-3 py-2.5">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-ink-900">Bill #{b.id}{b.request_id ? ` · request #${b.request_id}` : ''}</p>
-                <p className="text-xs text-ink-500">{b.created_at ? fmtRelative(b.created_at, Date.now()) : '—'}</p>
+                <p className="text-xs text-ink-500">{b.created_at ? fmtRelative(b.created_at, now) : '—'}</p>
               </div>
               <span className="text-sm font-bold tabular-nums text-ink-900">{fmtMoney(b.amount)}</span>
               <Button size="sm" variant="secondary" onClick={() => setOpen(b)} aria-label={`Mark bill ${b.id} received`}>Received</Button>

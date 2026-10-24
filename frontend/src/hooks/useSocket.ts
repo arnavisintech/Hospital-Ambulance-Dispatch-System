@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getToken, post } from '../lib/api';
 import { backoffMs } from '../lib/queue';
 import type { WsMessage } from '../lib/types';
@@ -17,11 +17,11 @@ export function buildWsUrl(topics: string[], ticket: string, loc: Pick<Location,
 export function useSocket(topics: string[], onMessage: (m: WsMessage) => void, enabled = true): { connected: boolean } {
   const [connected, setConnected] = useState(false);
   const handler = useRef(onMessage);
-  handler.current = onMessage;
+  useLayoutEffect(() => { handler.current = onMessage; });
   const key = topics.join(',');
 
   useEffect(() => {
-    if (!enabled || !key) { setConnected(false); return; }
+    if (!enabled || !key) return;
     let ws: WebSocket | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let attempt = 0;
@@ -57,5 +57,5 @@ export function useSocket(topics: string[], onMessage: (m: WsMessage) => void, e
     };
   }, [key, enabled]);
 
-  return { connected };
+  return { connected: connected && enabled && !!key };
 }
