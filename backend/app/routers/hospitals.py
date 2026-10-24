@@ -214,7 +214,9 @@ def update_ambulance(hospital_id: int, ambulance_id: int, body: FleetPatch,
         amb.status = AmbulanceStatus.maintenance
         changes["status"] = amb.status.value
     elif body.maintenance is False and amb.status == AmbulanceStatus.maintenance:
-        amb.status = AmbulanceStatus.available if amb.staffed else AmbulanceStatus.offline
+        # Back to offline, never straight to available: only the crew going on duty (/crew/duty) makes a unit
+        # dispatchable, since nobody here knows whether its crew is on shift.
+        amb.status = AmbulanceStatus.offline
         changes["status"] = amb.status.value
     if changes:
         audit.log(db, "fleet.update", "ambulance", amb.id, user.id, {"hospital_id": hospital_id, **changes})

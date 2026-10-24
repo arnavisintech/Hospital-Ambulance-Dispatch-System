@@ -42,9 +42,14 @@ def test_maintenance_and_staffing_take_a_unit_out_of_dispatch(client, world):
     with SessionLocal() as db:
         assert db.get(Ambulance, s["a1"]).status == AmbulanceStatus.maintenance
         assert {a.action for a in db.execute(select(AuditLog).where(AuditLog.action == "fleet.update")).scalars()} == {"fleet.update"}
-    # back in service: staffed -> available again
+    # back from maintenance: offline until the crew themselves go on duty (a unit is never dispatchable just
+    # because maintenance ended - its crew may be off shift)
     r = client.patch(f"/api/hospitals/{s['h']}/ambulances/{s['a1']}", json={"maintenance": False}, headers=h)
-    assert r.json()["status"] == "available"
+    assert r.json()["status"] == "offline"
+    crew = world.crew(s["a1"])
+    assert client.post("/api/crew/duty", json={"on_duty": True}, headers=crew["h"]).status_code == 200
+    with SessionLocal() as db:
+        assert db.get(Ambulance, s["a1"]).status == AmbulanceStatus.available
 
 
 def test_busy_unit_cannot_be_taken_out_of_service(client, world):
