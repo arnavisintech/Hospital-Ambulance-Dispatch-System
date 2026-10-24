@@ -151,3 +151,104 @@ def test_admission_control_caps_in_flight_requests():
             await asyncio.gather(*(c.get("/api/ready") for _ in range(6)))   # probes bypass the queue
             assert state["max"] == 6
     asyncio.run(go())
+
+
+def _ok_app(state, gate=None):
+    async def app(scope, receive, send):
+        body = b""
+        while True:
+            m = await receive()
+            body += m.get("body", b"")
+            if not m.get("more_body"):
+                break
+        state["bodies"].append(body)
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        if gate is not None:
+            await gate.wait()                       # a client that is slow to read the response
+        await send({"type": "http.response.body", "body": b"ok"})
+    return app
+
+
+def test_admission_slot_not_held_by_a_slow_uploader():
+    """Security review: the request body is read before a slot is taken, so trickling a body cannot starve SOS calls."""
+    from app.middleware import ConcurrencyLimitMiddleware
+
+    async def go():
+        state = {"bodies": []}
+        mw = ConcurrencyLimitMiddleware(_ok_app(state), limit=1)
+        slow_more = asyncio.Event()
+        sent = []
+
+        async def slow_receive():
+            if not sent:
+                sent.append(1)
+                return {"type": "http.request", "body": b"part1", "more_body": True}
+            await slow_more.wait()
+            return {"type": "http.request", "body": b"part2", "more_body": False}
+
+        async def fast_receive():
+            return {"type": "http.request", "body": b"sos", "more_body": False}
+
+        async def send(_m):
+            pass
+        scope = {"type": "http", "path": "/api/requests", "method": "POST", "headers": []}
+        slow = asyncio.create_task(mw(scope, slow_receive, send))
+        await asyncio.sleep(0.01)
+        await asyncio.wait_for(mw(dict(scope), fast_receive, send), 1)   # completes while the slow body is pending
+        assert state["bodies"] == [b"sos"]
+        slow_more.set()
+        await slow
+        assert state["bodies"] == [b"sos", b"part1part2"]
+    asyncio.run(go())
+
+
+def test_admission_slot_released_when_the_response_starts():
+    from app.middleware import ConcurrencyLimitMiddleware
+
+    async def go():
+        state = {"bodies": []}
+        gate = asyncio.Event()
+        mw = ConcurrencyLimitMiddleware(_ok_app(state, gate), limit=1)
+
+        async def receive():
+            return {"type": "http.request", "body": b"x", "more_body": False}
+
+        async def send(_m):
+            pass
+        scope = {"type": "http", "path": "/api/requests/1", "method": "GET", "headers": []}
+        first = asyncio.create_task(mw(scope, receive, send))
+        await asyncio.sleep(0.01)                     # first response started, its body is held back by a slow reader
+        second = asyncio.create_task(mw(dict(scope), receive, send))
+        await asyncio.sleep(0.05)
+        assert len(state["bodies"]) == 2              # the second request ran without waiting for the first to finish
+        gate.set()
+        await asyncio.gather(first, second)
+    asyncio.run(go())
+
+
+def test_admission_queue_wait_is_bounded_with_503():
+    from app.middleware import ConcurrencyLimitMiddleware
+
+    async def go():
+        hold = asyncio.Event()
+
+        async def stuck(scope, receive, send):
+            await hold.wait()
+
+        mw = ConcurrencyLimitMiddleware(stuck, limit=1, wait_s=0.05)
+        sent = []
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(m):
+            sent.append(m)
+        scope = {"type": "http", "path": "/api/requests", "method": "POST", "headers": []}
+        first = asyncio.create_task(mw(scope, receive, send))
+        await asyncio.sleep(0.01)
+        await mw(dict(scope), receive, send)
+        start = next(m for m in sent if m["type"] == "http.response.start")
+        assert start["status"] == 503 and (b"retry-after", b"2") in start["headers"]
+        hold.set()
+        await first
+    asyncio.run(go())

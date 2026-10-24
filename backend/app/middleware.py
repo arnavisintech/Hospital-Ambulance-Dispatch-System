@@ -58,28 +58,85 @@ class RequestContextMiddleware:
 
 
 class ConcurrencyLimitMiddleware:
-    """Admission control: at most `limit` API requests are in flight; the rest wait here, holding no DB connection.
+    """Admission control: at most `limit` API requests do server-side work at once; the rest wait here, holding no DB
+    connection.
 
     A sync FastAPI request hops between worker threads (auth dependency, endpoint, teardown) and keeps its DB session's
     connection while it waits for the next thread. Unbounded, an SOS burst parks hundreds of requests that each hold a
     connection while every worker thread waits for one: a deadlock until the pool timeout. Capping in-flight requests
-    below the pool size (Settings.api_threads vs db_pool_size + db_max_overflow) makes that impossible. Health probes
-    and websockets are never queued.
+    below the pool size (Settings.api_threads vs db_pool_size + db_max_overflow) makes that impossible.
+
+    A slot covers only the server's own work, so a slow client cannot hold one: the request body is read in full
+    before a slot is taken (bounded by MAX_BODY), and the slot is released when the response starts (FastAPI closes the
+    request's DB session before sending). Waiting for a slot is bounded: after `wait_s` the caller gets 503 with
+    Retry-After (the SOS screen queues and resends). Health probes and websockets are never queued.
     """
 
     EXEMPT = ("/api/health", "/api/ready")
+    MAX_BODY = 10 * 1024 * 1024
 
-    def __init__(self, app, limit: int):
+    def __init__(self, app, limit: int, wait_s: float = 15.0):
         self.app = app
         self.limit = limit
+        self.wait_s = wait_s
         self._sems: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()   # one per event loop (tests run several)
 
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or not scope["path"].startswith("/api/") or scope["path"] in self.EXEMPT:
-            return await self.app(scope, receive, send)
+    def _sem(self) -> asyncio.Semaphore:
         loop = asyncio.get_running_loop()
         sem = self._sems.get(loop)
         if sem is None:
             sem = self._sems[loop] = asyncio.Semaphore(self.limit)
-        async with sem:
-            await self.app(scope, receive, send)
+        return sem
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].startswith("/api/") or scope["path"] in self.EXEMPT:
+            return await self.app(scope, receive, send)
+        body, size = [], 0
+        while True:                                   # read the body before taking a slot
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            chunk = message.get("body", b"")
+            size += len(chunk)
+            if size > self.MAX_BODY:
+                return await _plain(send, 413, b'{"detail":"Request body too large"}')
+            body.append(chunk)
+            if not message.get("more_body"):
+                break
+        replayed = False
+
+        async def replay():
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": b"".join(body), "more_body": False}
+            return await receive()                    # after the body: disconnect notifications
+
+        sem = self._sem()
+        try:
+            await asyncio.wait_for(sem.acquire(), self.wait_s)
+        except TimeoutError:
+            return await _plain(send, 503, b'{"detail":"Server busy, retry shortly"}', [(b"retry-after", b"2")])
+        released = False
+
+        def release():
+            nonlocal released
+            if not released:
+                released = True
+                sem.release()
+
+        async def send_and_release(message):
+            if message["type"] == "http.response.start":
+                release()                             # server work is done; a slow reader must not hold the slot
+            await send(message)
+
+        try:
+            await self.app(scope, replay, send_and_release)
+        finally:
+            release()
+
+
+async def _plain(send, status: int, body: bytes, extra: list | None = None) -> None:
+    await send({"type": "http.response.start", "status": status,
+                "headers": [(b"content-type", b"application/json"), *(extra or [])]})
+    await send({"type": "http.response.body", "body": body})
