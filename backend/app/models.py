@@ -8,7 +8,7 @@ carries extra keys (crew -> ambulance, hospital staff -> hospital).
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import (JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text,
+from sqlalchemy import (DDL, JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text,
                         UniqueConstraint, event, inspect)
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
@@ -302,6 +302,25 @@ class AuditLog(Base):
     details: Mapped[dict] = mapped_column(JSON, default=dict)
     prev_hash: Mapped[str] = mapped_column(String(64), default="")
     hash: Mapped[str] = mapped_column(String(64), default="")
+
+
+# NFR7: the database itself refuses UPDATE / DELETE on audit rows (the hash chain still detects a privileged bypass).
+AUDIT_IMMUTABLE_MSG = "audit_logs is append-only"
+AUDIT_TRIGGERS = ("audit_logs_no_update", "audit_logs_no_delete")
+for _name, _op in zip(AUDIT_TRIGGERS, ("UPDATE", "DELETE")):
+    event.listen(AuditLog.__table__, "after_create", DDL(
+        f"CREATE TRIGGER {_name} BEFORE {_op} ON audit_logs "
+        f"BEGIN SELECT RAISE(ABORT, '{AUDIT_IMMUTABLE_MSG}'); END").execute_if(dialect="sqlite"))
+event.listen(AuditLog.__table__, "after_create", DDL(
+    "CREATE OR REPLACE FUNCTION audit_logs_immutable() RETURNS trigger LANGUAGE plpgsql AS $$ "
+    f"BEGIN RAISE EXCEPTION '{AUDIT_IMMUTABLE_MSG}'; END $$").execute_if(dialect="postgresql"))
+for _name, _op in zip(AUDIT_TRIGGERS, ("UPDATE", "DELETE")):
+    event.listen(AuditLog.__table__, "after_create", DDL(
+        f"CREATE TRIGGER {_name} BEFORE {_op} ON audit_logs "
+        "FOR EACH ROW EXECUTE FUNCTION audit_logs_immutable()").execute_if(dialect="postgresql"))
+event.listen(AuditLog.__table__, "after_create", DDL(  # TRUNCATE bypasses row triggers
+    "CREATE TRIGGER audit_logs_no_truncate BEFORE TRUNCATE ON audit_logs "
+    "FOR EACH STATEMENT EXECUTE FUNCTION audit_logs_immutable()").execute_if(dialect="postgresql"))
 
 
 class IncidentHistory(Base):

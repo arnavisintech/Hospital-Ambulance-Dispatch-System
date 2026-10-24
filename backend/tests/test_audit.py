@@ -2,6 +2,7 @@ import pytest
 from sqlalchemy import select, text
 
 from ops_helpers import Env
+from app import audit
 from app.models import AuditLog
 
 
@@ -41,6 +42,7 @@ def test_verify_chain_ok_and_detects_tampering(env):
     v = c.get("/api/audit/verify", headers=h).json()
     assert v["broken_at"] is None and v["ok"] and v["checked"] > 0
     with env.db() as db:
+        audit.drop_immutability_triggers(db)  # privileged bypass: the database alone would refuse this edit
         row = db.execute(select(AuditLog).order_by(AuditLog.id)).scalars().first()
         rid = row.id
         row.details = {"tampered": True}

@@ -6,7 +6,7 @@ from datetime import timezone
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from .models import AuditLog, utcnow
+from .models import AUDIT_TRIGGERS, AuditLog, utcnow
 
 
 def _digest(prev: str, ts: str, user_id, action: str, entity: str, entity_id, details: dict) -> str:
@@ -32,6 +32,16 @@ def log(db: Session, action: str, entity: str, entity_id=None, user_id: int | No
     db.add(row)
     db.flush()
     return row
+
+
+def drop_immutability_triggers(db: Session) -> None:
+    """TEST / DBA ONLY: remove the append-only triggers, simulating a privileged bypass the hash chain must catch."""
+    for name in (*AUDIT_TRIGGERS, "audit_logs_no_truncate"):
+        if db.get_bind().dialect.name == "postgresql":
+            db.execute(text(f"DROP TRIGGER IF EXISTS {name} ON audit_logs"))
+        else:
+            db.execute(text(f"DROP TRIGGER IF EXISTS {name}"))
+    db.commit()
 
 
 def verify_chain(db: Session) -> dict:
