@@ -1,15 +1,23 @@
+# HADS production stack (single host). Only the web front end is published; the API, database and road router
+# are reachable only on the internal network. Secrets come from ./.env (copy .env.example; generate with
+# `python backend/scripts/gen_keys.py`). Compose refuses to start when a required value is missing.
+#
+#   docker compose up -d --build                                              # production
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d     # demo (start-demo.bat)
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d      # local development ports
 services:
   db:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: hads
-      POSTGRES_PASSWORD: hads
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: hads
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hads"]
       interval: 5s
       retries: 10
+    restart: unless-stopped
 
   # One-shot: download Geofabrik southern-zone, clip to Chennai with osmium, osrm-extract/partition/customize (MLD)
   # into the osrm-data volume. A no-op once the dataset exists. First run: ~600 MB download, a few minutes CPU,
@@ -34,33 +42,38 @@ services:
     volumes: [osrm-data:/data:ro]
     depends_on:
       osrm-prep: {condition: service_completed_successfully}
-    ports: ["5000:5000"]
     restart: unless-stopped
 
   backend:
     build: ./backend
     environment:
-      DATABASE_URL: postgresql+psycopg2://hads:hads@db:5432/hads
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
-      SEED_ON_STARTUP: "true"
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgresql+psycopg2://hads:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/hads
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (python backend/scripts/gen_keys.py)}
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?set DATA_ENCRYPTION_KEY in .env (python backend/scripts/gen_keys.py)}
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS in .env, e.g. https://hads.example.org}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
       ROUTING_PROVIDER: osrm
       OSRM_URL: http://osrm:5000     # falls back to haversine automatically if OSRM is down or slower than 1.5 s
-      DEMO_AUTOPILOT: ${DEMO_AUTOPILOT:-true}
-      DEMO_SPEEDUP: ${DEMO_SPEEDUP:-4}
-      GEO_PROVIDER: ${GEO_PROVIDER:-nominatim}
+      LOG_JSON: ${LOG_JSON:-true}
+    volumes: [backups:/srv/backups]
     depends_on:
       db: {condition: service_healthy}
       # not required: without OSRM (e.g. no internet for the first prep) the backend still runs on haversine
       osrm: {condition: service_started, required: false}
-    ports: ["8000:8000"]
+    restart: unless-stopped
 
   frontend:
     build: ./frontend
     environment:
       STADIA_API_KEY: ${STADIA_API_KEY:-}   # required once served from a real domain (free at stadiamaps.com)
+    volumes: ["${CERTS_DIR:-./certs}:/etc/nginx/certs:ro"]   # fullchain.pem + privkey.pem enable HTTPS
     depends_on: [backend]
-    ports: ["8080:80"]
+    ports: ["${HTTP_PORT:-80}:80", "${HTTPS_PORT:-443}:443"]
+    restart: unless-stopped
 
 volumes:
   pgdata:
   osrm-data:
+  backups:

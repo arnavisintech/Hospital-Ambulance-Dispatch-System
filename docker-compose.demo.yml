@@ -1,0 +1,10 @@
+# Demo overlay (start-demo.bat): seeded Chennai dataset, one-click demo logins, simulated ambulances.
+# Use with the demo env file, which holds throwaway, publicly known secrets - never for real patients:
+#   docker compose --env-file demo.env -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+services:
+  backend:
+    environment:
+      APP_ENV: demo
+      DEMO_AUTOPILOT: "true"
+      DEMO_SPEEDUP: ${DEMO_SPEEDUP:-4}
+      LOG_JSON: "false"

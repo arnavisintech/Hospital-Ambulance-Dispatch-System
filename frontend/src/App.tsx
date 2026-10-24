@@ -64,7 +64,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/dev/ui" element={<DevUi />} />
+        {import.meta.env.DEV && <Route path="/dev/ui" element={<DevUi />} />}{/* component gallery: dev server only */}
         <Route path="/t/:token" element={<ShareTrack />} />
 
         {/* Mobile app: requester & crew */}

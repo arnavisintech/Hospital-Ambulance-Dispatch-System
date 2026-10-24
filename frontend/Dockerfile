@@ -9,9 +9,13 @@ ENV VITE_MAP_TILE_URL="/tiles/{z}/{x}/{y}{r}.png"     VITE_MAP_TILE_ATTRIBUTION=
 RUN npm run build
 
 # ---- runtime stage ----
-FROM nginx:alpine
+FROM nginx:1.27-alpine
 COPY templates /etc/nginx/templates
+COPY nginx /etc/nginx/hads
+COPY docker-entrypoint.d/40-hads-tls.sh /docker-entrypoint.d/40-hads-tls.sh
+RUN sed -i 's/\r$//' /docker-entrypoint.d/40-hads-tls.sh && chmod +x /docker-entrypoint.d/40-hads-tls.sh && rm -f /etc/nginx/conf.d/default.conf
 ENV STADIA_API_KEY=""
 COPY --from=build /app/dist /usr/share/nginx/html
-EXPOSE 80
+EXPOSE 80 443
+HEALTHCHECK --interval=15s --timeout=3s --retries=5 CMD wget -q -O /dev/null http://127.0.0.1/ || exit 1
 CMD ["nginx", "-g", "daemon off;"]

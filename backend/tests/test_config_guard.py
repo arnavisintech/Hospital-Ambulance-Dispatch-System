@@ -54,3 +54,33 @@ def test_lifespan_refuses_unsafe_production(monkeypatch):
         with TestClient(main.app):
             pass
     assert "JWT_SECRET" in str(e.value) and "CORS_ORIGINS" in str(e.value)
+
+
+def test_geocoder_defaults_to_offline_gazetteer(monkeypatch):
+    monkeypatch.delenv("GEO_PROVIDER", raising=False)
+    from app.config import Settings
+    assert Settings(_env_file=None).geo_provider == "offline"
+
+
+@pytest.mark.parametrize("rel", ["docker-compose.yml", "docker-compose.demo.yml", "backend/.env.example"])
+def test_no_public_nominatim_in_shipped_config(rel):
+    import pathlib
+    text = (pathlib.Path(__file__).resolve().parents[2] / rel).read_text(encoding="utf-8").lower()
+    assert "nominatim" not in text
+
+
+def test_spoofed_forwarded_for_cannot_fake_the_client_ip():
+    """Rate limits and lockout key on the client IP: a client-supplied X-Forwarded-For entry must be ignored."""
+    import pathlib
+    import re
+
+    from uvicorn.middleware.proxy_headers import _TrustedHosts
+    root = pathlib.Path(__file__).resolve().parents[2]
+    entry = (root / "backend/scripts/entrypoint.sh").read_text(encoding="utf-8")
+    default = re.search(r'FORWARDED_ALLOW_IPS:-([^}"]+)\}', entry).group(1)
+    assert default.strip() != "*"
+    trusted = _TrustedHosts(default)
+    # attacker sends "X-Forwarded-For: 6.6.6.6"; a proxy that appended would yield "6.6.6.6, <real>"
+    assert trusted.get_trusted_client_host("6.6.6.6, 203.0.113.9") == "203.0.113.9"
+    conf = (root / "frontend/nginx/app.conf").read_text(encoding="utf-8")
+    assert "proxy_add_x_forwarded_for" not in conf and "X-Forwarded-For $remote_addr" in conf

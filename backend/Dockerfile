@@ -8,7 +8,7 @@ COPY app ./app
 COPY scripts ./scripts
 COPY migrations ./migrations
 COPY alembic.ini .
-RUN chmod +x scripts/entrypoint.sh && useradd -m hads && chown -R hads /srv
+RUN sed -i 's/\r$//' scripts/*.sh && chmod +x scripts/entrypoint.sh && useradd -m hads && chown -R hads /srv
 USER hads
 EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=30s --retries=5 CMD curl -fs http://localhost:8000/api/ready || exit 1

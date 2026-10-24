@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     hospital_search_radius_km: float = 12.0
 
     # Places (FR1 address labels): Nominatim proxy with offline gazetteer fallback
-    geo_provider: str = "nominatim"  # nominatim | offline
+    geo_provider: str = "offline"  # offline (built-in Chennai gazetteer) | nominatim (third-party, opt-in)
     nominatim_url: str = "https://nominatim.openstreetmap.org"
     geo_user_agent: str = "HADS/1.0 (student project)"
     geo_timeout_s: float = 3.0
