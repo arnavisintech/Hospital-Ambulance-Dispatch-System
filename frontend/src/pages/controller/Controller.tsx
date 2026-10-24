@@ -11,7 +11,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSocket } from '../../hooks/useSocket';
 import { get } from '../../lib/api';
 import { cn } from '../../lib/cn';
-import { CHENNAI } from '../../lib/geo';
+import { CITY_CENTER } from '../../lib/geo';
 import { incidentMeta, severityMeta } from '../../lib/status';
 import type { AmbulanceBrief, Board, LatLng, RiskMap, Tracking, WsMessage } from '../../lib/types';
 import {
@@ -284,7 +284,7 @@ export default function Controller() {
         live={live} selectedId={selectedId} onSelect={(id) => { select(id); if (tab === 'fleet' || tab === 'rebalance') setTab('active'); }}
         layers={layers} riskZones={risk.data?.zones} moves={moves} focus={focus}
         controlsInset={{ right: split && selected ? DETAIL_W + 12 : 0, bottom: 0 }}
-        onRecenter={() => setFocus({ at: CHENNAI, key: `home-${Date.now()}`, zoom: 12, exact: true })}
+        onRecenter={() => setFocus({ at: CITY_CENTER, key: `home-${Date.now()}`, zoom: 12, exact: true })}
       />
       <div className="pointer-events-none absolute right-3 top-3 z-[1000] flex flex-col items-end gap-2" style={{ right: split && selected ? DETAIL_W + 24 : 12 }}>
         <LayerToggles compact={!split || !!selected} layers={layers} onChange={setLayers} riskLoading={risk.loading && layers.risk} riskError={risk.error} />

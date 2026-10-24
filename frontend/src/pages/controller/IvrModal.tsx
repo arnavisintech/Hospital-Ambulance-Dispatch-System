@@ -6,7 +6,7 @@ import { Button, Input, Modal, Textarea, useToast } from '../../components/ui';
 import { usePlaceSearch } from '../../hooks/usePlaceSearch';
 import { get, post } from '../../lib/api';
 import { cn } from '../../lib/cn';
-import { CHENNAI } from '../../lib/geo';
+import { CITY_CENTER } from '../../lib/geo';
 import { newUuid } from '../../lib/queue';
 import { INCIDENT_KEYS, incidentMeta, severityMeta, toneClasses } from '../../lib/status';
 import type { LatLng, PlaceResult, RequestOut, ReversePlace } from '../../lib/types';
@@ -139,7 +139,7 @@ function IvrForm({ onCreated, center, onCancel }: { onCreated: (r: RequestOut) =
         <PlaceSearch onPick={(p) => { setAddrEdited(false); map.current?.flyTo([p.lat, p.lng], 16, { duration: 0.6 }); }} />
         <div className={cn('relative h-[300px] overflow-hidden rounded-lg border md:h-[340px]', submitted && !pos ? 'border-brand-500' : 'border-line')}>
           <MapCanvas
-            center={center ?? CHENNAI} zoom={14} zoomControls ariaLabel="Incident location map — drag to place the pin"
+            center={center ?? CITY_CENTER} zoom={14} zoomControls ariaLabel="Incident location map — drag to place the pin"
             onMapReady={(m) => { map.current = m; }}
             centerPin={{ onChange: setPos, label: 'Ambulance will come here' }}
           />

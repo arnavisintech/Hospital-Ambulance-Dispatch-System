@@ -4,6 +4,8 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
 COPY . .
+ARG VITE_CITY_CENTER="13.0827,80.2707"
+ENV VITE_CITY_CENTER=$VITE_CITY_CENTER
 # Production builds load base-map tiles through nginx's caching proxy (see templates/default.conf.template).
 ENV VITE_MAP_TILE_URL="/tiles/{z}/{x}/{y}{r}.png"     VITE_MAP_TILE_ATTRIBUTION='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 RUN npm run build

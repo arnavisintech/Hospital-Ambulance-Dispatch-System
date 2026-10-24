@@ -130,3 +130,10 @@ def test_receipt_carries_estimated_wait(client, world):
     wait = r.json()["estimated_wait_seconds"]
     assert isinstance(wait, int) and 0 < wait < 1800
     assert "estimated_wait_seconds" not in client.get(f"/api/requests/{r.json()['id']}", headers=u2["h"]).json()
+
+
+def test_sos_outside_the_service_area_is_refused(client, world):
+    u, ctl = world.user(), world.user(Role.controller)
+    r = client.post("/api/requests", headers=u["h"], json={"lat": 28.61, "lng": 77.21})   # New Delhi
+    assert r.status_code == 422 and "108" in r.json()["detail"]
+    assert client.post("/api/requests/ivr", headers=ctl["h"], json={"lat": 28.61, "lng": 77.21}).status_code == 422

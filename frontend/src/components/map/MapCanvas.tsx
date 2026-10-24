@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { LocateFixed, Minus, Plus } from 'lucide-react';
 import { cn } from '../../lib/cn';
-import { CHENNAI } from '../../lib/geo';
+import { CITY_CENTER } from '../../lib/geo';
 import type { LatLng } from '../../lib/types';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { OSM_FALLBACK, primaryTiles, type TileProvider } from '../../lib/mapTiles';
@@ -55,7 +55,7 @@ export interface MapCanvasProps {
  * go inside as children.
  */
 export function MapCanvas({
-  center = CHENNAI, zoom = 13, minZoom = 10, maxZoom = 18, className, style, children, zoomControls = 'auto',
+  center = CITY_CENTER, zoom = 13, minZoom = 10, maxZoom = 18, className, style, children, zoomControls = 'auto',
   recenterTo, onRecenter, recenterLabel = 'Recenter map', controlsInset, centerPin, scrollWheelZoom = true,
   interactive = true, onMapReady, ariaLabel = 'Map',
 }: MapCanvasProps) {

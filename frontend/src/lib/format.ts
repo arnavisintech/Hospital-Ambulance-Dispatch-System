@@ -161,7 +161,7 @@ export function fmtPhone(p?: string | null): string {
 }
 
 // Back-compat: geo helpers used to live here.
-export { CHENNAI, haversineKm } from './geo';
+export { CITY_CENTER, haversineKm } from './geo';
 
 /** 0..1 share as a whole percent ("14%"); "-" when unknown. */
 export function fmtShare(x?: number | null): string {

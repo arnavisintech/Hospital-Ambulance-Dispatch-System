@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
-import { CHENNAI } from '../lib/geo';
+import { CITY_CENTER } from '../lib/geo';
 import { TILE_ATTRIBUTION, TILE_URL } from './map/MapCanvas';
 import type { LatLng } from '../lib/types';
 
@@ -50,7 +50,7 @@ export interface MapViewProps {
   children?: ReactNode;
 }
 
-export function MapView({ className = 'h-72 w-full', center = CHENNAI, zoom = 12, fitPoints = [], onPick, recenterOn, children }: MapViewProps) {
+export function MapView({ className = 'h-72 w-full', center = CITY_CENTER, zoom = 12, fitPoints = [], onPick, recenterOn, children }: MapViewProps) {
   return (
     <MapContainer center={center} zoom={zoom} className={`${className} rounded-lg`} scrollWheelZoom aria-label="Map">
       <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} subdomains="abcd" maxZoom={20} />

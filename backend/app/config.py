@@ -1,4 +1,6 @@
 from functools import lru_cache
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,9 +14,10 @@ class Settings(BaseSettings):
     cors_origins: str = "*"  # comma separated
     data_encryption_key: str = ""  # Fernet key(s), comma separated; first encrypts (NFR3)
 
-    # Pilot city (Chennai) -- map centre and prediction grid
+    # Pilot city (Chennai) -- map centre and prediction grid. Another city = these three settings (STRQ5).
     city_lat: float = 13.0827
     city_lng: float = 80.2707
+    service_area: str = "12.80,79.98,13.25,80.35"  # lat_min,lng_min,lat_max,lng_max: SOS, imports, interop
     zone_cell_deg: float = 0.02  # ~2.2 km grid cells
 
     # Dispatch tuning
@@ -57,6 +60,17 @@ class Settings(BaseSettings):
     log_json: bool = False                # one JSON object per log line (production log shippers)
     gps_retention_hours: int = 24          # raw ambulance GPS history (DPDP data minimisation)
     notification_retention_days: int = 30  # read in-app notifications; unread ones are kept
+
+    @field_validator("service_area")
+    @classmethod
+    def _bbox(cls, v: str) -> str:
+        try:
+            lat_min, lng_min, lat_max, lng_max = (float(x) for x in v.split(","))
+        except ValueError:
+            raise ValueError("SERVICE_AREA must be lat_min,lng_min,lat_max,lng_max") from None
+        if not (-90 <= lat_min < lat_max <= 90 and -180 <= lng_min < lng_max <= 180):
+            raise ValueError("SERVICE_AREA must have min < max within valid coordinates")
+        return v
 
     @property
     def is_demo(self) -> bool:

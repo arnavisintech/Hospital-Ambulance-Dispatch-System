@@ -1,6 +1,17 @@
 import type { LatLng } from './types';
 
-export const CHENNAI: LatLng = [13.0827, 80.2707];
+const CHENNAI: LatLng = [13.0827, 80.2707];
+
+/** "lat,lng" from VITE_CITY_CENTER (build-time); anything missing or malformed falls back to the Chennai pilot. */
+export function parseCityCenter(raw: string | undefined): LatLng {
+  const parts = (raw ?? '').split(',').map((x) => Number(x.trim()));
+  const [lat, lng] = parts;
+  return parts.length === 2 && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+    ? [lat, lng] : CHENNAI;
+}
+
+/** Default map centre for this deployment's city (STRQ5: another city is a build setting, not a code change). */
+export const CITY_CENTER: LatLng = parseCityCenter(import.meta.env.VITE_CITY_CENTER as string | undefined);
 
 const RAD = Math.PI / 180;
 

@@ -4,7 +4,7 @@ import { Loader2, MapPin, Search } from 'lucide-react';
 import { MapCanvas } from '../../../components/map';
 import { get } from '../../../lib/api';
 import { cn } from '../../../lib/cn';
-import { CHENNAI } from '../../../lib/geo';
+import { CITY_CENTER } from '../../../lib/geo';
 import type { LatLng, PlaceResult, ReversePlace } from '../../../lib/types';
 
 /**
@@ -30,7 +30,7 @@ export function PlacePicker({ value, onChange, onAddress, label = 'Location', pi
   const [place, setPlace] = useState<string | null>(null);
   const addrCb = useRef(onAddress);
   useEffect(() => { addrCb.current = onAddress; });
-  const [start] = useState<LatLng>(() => value ?? CHENNAI);
+  const [start] = useState<LatLng>(() => value ?? CITY_CENTER);
 
   // Debounced search.
   useEffect(() => {

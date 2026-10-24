@@ -98,3 +98,23 @@ def test_seed_loads_synthetic_demographics():
     with env.db() as db:
         s = demo.summary(db)
     assert s["zones"] >= 150 and s["source"] == "synthetic"
+
+
+def test_service_area_is_configurable(monkeypatch):
+    """STRQ5: another city is a configuration change, not a code change (Chennai stays the default)."""
+    from app.config import Settings, get_settings
+    from app.geo import service_area
+    assert Settings(_env_file=None).service_area == "12.80,79.98,13.25,80.35"
+    monkeypatch.setattr(get_settings(), "service_area", "12.85,77.45,13.15,77.80")   # Bengaluru
+    assert service_area() == (12.85, 77.45, 13.15, 77.80)
+    assert in_city(12.97, 77.59) and not in_city(13.0827, 80.2707)
+
+
+def test_malformed_service_area_is_rejected():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.config import Settings
+    for bad in ("12.8,79.9,13.2", "13.25,79.98,12.80,80.35", "a,b,c,d"):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, service_area=bad)

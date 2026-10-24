@@ -27,10 +27,16 @@ def zone_center(zone_id: str) -> tuple[float, float]:
     return (s.city_lat + (row + 0.5) * s.zone_cell_deg, s.city_lng + (col + 0.5) * s.zone_cell_deg)
 
 
-# Chennai metropolitan area (lat_min, lng_min, lat_max, lng_max): the pilot city boundary for imports and APIs.
+# Chennai metropolitan area (lat_min, lng_min, lat_max, lng_max): the pilot default for SERVICE_AREA.
 CHENNAI_BBOX = (12.80, 79.98, 13.25, 80.35)
 
 
+def service_area() -> tuple[float, float, float, float]:
+    """The deployment's service area (SERVICE_AREA setting); requests, imports and interop are bounded by it."""
+    lat_min, lng_min, lat_max, lng_max = (float(x) for x in get_settings().service_area.split(","))
+    return lat_min, lng_min, lat_max, lng_max
+
+
 def in_city(lat: float, lng: float) -> bool:
-    lat_min, lng_min, lat_max, lng_max = CHENNAI_BBOX
+    lat_min, lng_min, lat_max, lng_max = service_area()
     return lat_min <= lat <= lat_max and lng_min <= lng <= lng_max

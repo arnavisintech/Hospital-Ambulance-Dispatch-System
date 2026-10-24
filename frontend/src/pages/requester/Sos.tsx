@@ -11,7 +11,7 @@ import { useAsync } from '../../hooks/useAsync';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { ApiError, get, post } from '../../lib/api';
 import { cn } from '../../lib/cn';
-import { CHENNAI } from '../../lib/geo';
+import { CITY_CENTER } from '../../lib/geo';
 import { enqueue, isRetryable, newUuid } from '../../lib/queue';
 import { INCIDENT, INCIDENT_KEYS, SEVERITY, isLiveTrip, requestStatusMeta, severityMeta, toneClasses } from '../../lib/status';
 import type { CreateRequestBody, LatLng, PlaceResult, RequestOut, ReversePlace } from '../../lib/types';
@@ -37,7 +37,7 @@ export default function Sos() {
   const programmatic = useRef(false);
   const firstMove = useRef(true);
 
-  const [center, setCenter] = useState<LatLng>(CHENNAI);
+  const [center, setCenter] = useState<LatLng>(CITY_CENTER);
   const [source, setSource] = useState<LocSource>('none');
   const [locating, setLocating] = useState(HAS_GPS);   // a GPS fix is requested as soon as the screen opens
   const [gpsError, setGpsError] = useState<string | null>(HAS_GPS ? null : 'Location isn’t available on this device');

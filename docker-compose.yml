@@ -2,21 +2,43 @@
 # are reachable only on the internal network. Secrets come from ./.env (copy .env.example; generate with
 # `python backend/scripts/gen_keys.py`). Compose refuses to start when a required value is missing.
 #
-#   docker compose up -d --build                                              # production
-#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d     # demo (start-demo.bat)
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d      # local development ports
+#   docker compose up -d --build                                                          # production
+#   docker compose --env-file demo.env -f docker-compose.yml -f docker-compose.demo.yml up -d  # demo (start-demo.bat)
+#   ... -f docker-compose.dev.yml                                                          # + localhost dev ports
 services:
   db:
-    image: postgres:16-alpine
+    build: ./infra/postgres          # postgres:16-alpine + continuous WAL archiving to the pg-wal volume
     environment:
       POSTGRES_USER: hads
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: hads
-    volumes: [pgdata:/var/lib/postgresql/data]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - pg-wal:/wal
+      - ${BACKUP_DIR:-pg-backups}:/backups:ro   # read by scripts/restore-db.sh only
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hads"]
       interval: 5s
       retries: 10
+    restart: unless-stopped
+
+  # Base backup at start (if none yet) and every BACKUP_INTERVAL_H hours; keeps BACKUP_KEEP. Together with the
+  # archived WAL this allows point-in-time recovery (scripts/restore-db.sh, docs/OPERATIONS.md).
+  # Point BACKUP_DIR at a second disk (or a synced folder) so a backup survives the loss of the data disk.
+  backup:
+    build: ./infra/postgres
+    entrypoint: ["/usr/local/bin/loop.sh"]
+    environment:
+      PGHOST: db
+      PGUSER: hads
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      BACKUP_KEEP: ${BACKUP_KEEP:-7}
+      BACKUP_INTERVAL_H: ${BACKUP_INTERVAL_H:-24}
+    volumes:
+      - ${BACKUP_DIR:-pg-backups}:/backups
+      - pg-wal:/wal
+    depends_on:
+      db: {condition: service_healthy}
     restart: unless-stopped
 
   # One-shot: download Geofabrik southern-zone, clip to Chennai with osmium, osrm-extract/partition/customize (MLD)
@@ -57,7 +79,9 @@ services:
       ROUTING_PROVIDER: osrm
       OSRM_URL: http://osrm:5000     # falls back to haversine automatically if OSRM is down or slower than 1.5 s
       LOG_JSON: ${LOG_JSON:-true}
-    volumes: [backups:/srv/backups]
+      SERVICE_AREA: ${SERVICE_AREA:-12.80,79.98,13.25,80.35}   # city = SERVICE_AREA + CITY_LAT/CITY_LNG (STRQ5)
+      CITY_LAT: ${CITY_LAT:-13.0827}
+      CITY_LNG: ${CITY_LNG:-80.2707}
     depends_on:
       db: {condition: service_healthy}
       # not required: without OSRM (e.g. no internet for the first prep) the backend still runs on haversine
@@ -65,7 +89,10 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_CITY_CENTER: ${CITY_LAT:-13.0827},${CITY_LNG:-80.2707}
     environment:
       STADIA_API_KEY: ${STADIA_API_KEY:-}   # required once served from a real domain (free at stadiamaps.com)
     volumes: ["${CERTS_DIR:-./certs}:/etc/nginx/certs:ro"]   # fullchain.pem + privkey.pem enable HTTPS
@@ -75,5 +102,6 @@ services:
 
 volumes:
   pgdata:
+  pg-wal:
+  pg-backups:
   osrm-data:
-  backups:
