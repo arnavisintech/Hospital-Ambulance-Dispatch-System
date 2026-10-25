@@ -79,3 +79,30 @@ def test_public_hospital_list_shows_verified_only(client, world):
     assert verified in ids and hid not in ids
     with SessionLocal() as db:
         assert db.get(Hospital, hid) is not None
+
+
+def test_unverified_or_suspended_partner_fleet_is_never_dispatched(client, world):
+    """Final review (STRQ2): a pending or suspended hospital's ambulances must not be sent, even if they are nearest."""
+    from conftest import PATIENT, sos
+    from app.db import SessionLocal
+    from app.models import EmergencyRequest
+    pending = world.hospital(partner_verified=False)
+    near = world.ambulance(world.station(pending), lat=PATIENT[0] + 0.001, lng=PATIENT[1])
+    verified = world.hospital()
+    far = world.ambulance(world.station(verified), lat=PATIENT[0] + 0.03, lng=PATIENT[1])
+    u = world.user()
+    rid = sos(client, u["h"]).json()["id"]
+    with SessionLocal() as db:
+        assert db.get(EmergencyRequest, rid).ambulance_id == far != near
+    ctl = world.user(Role.controller)
+    rid2 = sos(client, world.user()["h"]).json()["id"]
+    r = client.post(f"/api/controller/requests/{rid2}/assign", json={"ambulance_id": near}, headers=ctl["h"])
+    assert r.status_code == 409
+
+
+def test_unverified_partner_staff_cannot_use_operational_screens(client, world):
+    pending = world.hospital(partner_verified=False)
+    staff = world.user(Role.hospital_staff, hospital_id=pending)
+    for path in ("incoming", "fleet", "records"):
+        assert client.get(f"/api/hospitals/{pending}/{path}", headers=staff["h"]).status_code == 403, path
+    assert client.get(f"/api/hospitals/{pending}/fleet", headers=world.user(Role.admin)["h"]).status_code == 200

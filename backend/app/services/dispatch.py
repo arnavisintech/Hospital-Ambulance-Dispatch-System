@@ -18,8 +18,8 @@ from sqlalchemy.orm import Session
 from .. import audit, db as dbmod, events
 from ..config import get_settings
 from ..geo import haversine_km, zone_of
-from ..models import (Ambulance, AmbulanceStatus, AttemptStatus, DispatchAttempt, EmergencyRequest, RequestStatus,
-                      Role, utcnow)
+from ..models import (Ambulance, AmbulanceStatus, AttemptStatus, DarkStation, DispatchAttempt, EmergencyRequest, Hospital,
+                      RequestStatus, Role, utcnow)
 from . import analytics, capacity, notify, routing, trips
 from .trips import aware
 
@@ -64,8 +64,11 @@ def rank_candidates(db: Session, req: EmergencyRequest, exclude: set[int] | None
         risk = analytics.get_zone_risk(db) or {}
     except Exception:  # noqa: BLE001 - prediction is advisory only
         risk = {}
-    rows = db.execute(select(Ambulance).where(Ambulance.status == AmbulanceStatus.available,
-                                              Ambulance.staffed.is_(True))
+    rows = db.execute(select(Ambulance)
+                      .join(DarkStation, DarkStation.id == Ambulance.station_id)
+                      .join(Hospital, Hospital.id == DarkStation.hospital_id)
+                      .where(Ambulance.status == AmbulanceStatus.available, Ambulance.staffed.is_(True),
+                             Hospital.partner_verified.is_(True))   # STRQ2: pending/suspended partners never dispatch
                       .execution_options(populate_existing=True)).scalars().all()
     eligible = []
     for a in rows:
@@ -295,6 +298,9 @@ def assign_manual(db: Session, req: EmergencyRequest, amb_id: int, user_id: int,
             raise trips.HTTPException(409, "Ambulance already assigned to this request")
         if amb.status != AmbulanceStatus.available or not amb.staffed:
             raise trips.HTTPException(409, f"Ambulance not available (status {amb.status.value}, staffed={amb.staffed})")
+        st = db.get(DarkStation, amb.station_id)
+        if st is None or not db.get(Hospital, st.hospital_id).partner_verified:
+            raise trips.HTTPException(409, "This ambulance belongs to a hospital that is not a verified partner")
         previous = req.ambulance_id
         if previous:
             for a in db.execute(select(DispatchAttempt).where(

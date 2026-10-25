@@ -46,6 +46,9 @@ def _own_staff(db: Session, user: User, hospital_id: int, allow_admin: bool = Fa
         return
     if user.role != Role.hospital_staff or trips.user_hospital_id(db, user) != hospital_id:
         raise HTTPException(403, "Not permitted for this hospital")
+    h = db.get(Hospital, hospital_id)
+    if h is not None and not h.partner_verified:   # STRQ2: pending / suspended partners have no operational access
+        raise HTTPException(403, "Your hospital is not a verified HADS partner yet; contact the administrator")
 
 
 @router.get("")
