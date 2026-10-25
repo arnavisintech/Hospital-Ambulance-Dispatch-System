@@ -35,3 +35,20 @@ describe('offline queue ownership (final review F5)', () => {
     expect(loadQueue()).toHaveLength(0);
   });
 });
+
+describe('stale queued SOS (final review minor)', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('never sends an SOS queued more than 30 minutes ago; reports it as expired instead', async () => {
+    const old = enqueue(body, 1);
+    localStorage.setItem('hads_sos_queue', JSON.stringify(loadQueue().map((x) =>
+      ({ ...x, queued_at: new Date(Date.now() - 31 * 60_000).toISOString() }))));
+    const fresh = enqueue(body, 1);
+    const send = vi.fn().mockResolvedValue({ id: 3 });
+    const res = await flushQueue(send, 1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0].client_uuid).toBe(fresh.client_uuid);
+    expect(res.expired).toEqual([old.client_uuid]);
+    expect(loadQueue()).toHaveLength(0);
+  });
+});

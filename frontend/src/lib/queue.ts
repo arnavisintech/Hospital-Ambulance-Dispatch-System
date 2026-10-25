@@ -1,6 +1,9 @@
 import type { CreateRequestBody } from './types';
 
 const QUEUE_KEY = 'hads_sos_queue';
+/** A queued SOS older than this is not sent: the caller has likely moved on or called 108, and an ambulance sent
+ *  hours later would go to an empty address. */
+export const QUEUE_MAX_AGE_MS = 30 * 60 * 1000;
 
 /** `owner` is the user who queued it: only that user's session ever sends it (shared phones). */
 export interface QueuedRequest { client_uuid: string; body: CreateRequestBody; queued_at: string; attempts: number; owner?: number }
@@ -62,12 +65,17 @@ export function isRetryable(err: unknown): boolean {
 
 export type Sender = (body: CreateRequestBody) => Promise<{ id: number }>;
 
-export interface FlushResult { sent: { client_uuid: string; id: number }[]; dropped: string[]; remaining: number }
+export interface FlushResult { sent: { client_uuid: string; id: number }[]; dropped: string[]; expired: string[]; remaining: number }
 
 /** Try to send all queued requests in order; stop at the first retryable failure. */
 export async function flushQueue(send: Sender, owner?: number): Promise<FlushResult> {
-  const res: FlushResult = { sent: [], dropped: [], remaining: 0 };
+  const res: FlushResult = { sent: [], dropped: [], expired: [], remaining: 0 };
   for (const item of loadQueue(owner)) {
+    if (Date.now() - Date.parse(item.queued_at) > QUEUE_MAX_AGE_MS) {
+      removeFromQueue(item.client_uuid);
+      res.expired.push(item.client_uuid);
+      continue;
+    }
     try {
       const out = await send(item.body);
       removeFromQueue(item.client_uuid);

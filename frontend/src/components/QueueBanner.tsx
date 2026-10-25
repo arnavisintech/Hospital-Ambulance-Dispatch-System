@@ -34,6 +34,7 @@ export function QueueBanner() {
         nav(`/track/${res.sent[res.sent.length - 1].id}`);
       }
       if (res.dropped.length) toast('A queued request was rejected by the server and discarded', 'error');
+      if (res.expired.length) toast('A saved SOS was over 30 minutes old and was not sent. If you still need help, raise a new SOS or call 108.', 'error');
       if (res.remaining > 0) {
         timer.current = setTimeout(() => void flush(), backoffMs(attempt.current++, 2000, 30000));
       }
