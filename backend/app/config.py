@@ -100,7 +100,19 @@ class Settings(BaseSettings):
             problems.append("DB_POOL_SIZE + DB_MAX_OVERFLOW must be at least API_THREADS + 10 (a burst would deadlock)")
         if not self.data_encryption_key.strip():
             problems.append("DATA_ENCRYPTION_KEY must be set (patient data is encrypted at rest)")
+        elif not _valid_fernet_keys(self.data_encryption_key):
+            problems.append("DATA_ENCRYPTION_KEY must be comma-separated Fernet keys (python backend/scripts/gen_keys.py)")
         return problems
+
+
+def _valid_fernet_keys(keys: str) -> bool:
+    from cryptography.fernet import Fernet
+    try:
+        for k in (x.strip() for x in keys.split(",")):
+            Fernet(k.encode())
+    except (ValueError, TypeError):
+        return False
+    return True
 
 
 _DEFAULT_SECRETS = {"change-me-in-production", "change-me", "dev-secret-change-me"}

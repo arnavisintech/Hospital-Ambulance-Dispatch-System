@@ -1,5 +1,6 @@
 """Production config guard (Task 2): the app refuses to boot in production with unsafe settings."""
 import pytest
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 from app import main
@@ -7,10 +8,12 @@ from app.config import Settings
 
 GOOD_SECRET = "x" * 48
 
+_KEY = Fernet.generate_key().decode()
+
 
 def prod(**over) -> Settings:
     base = dict(app_env="production", jwt_secret=GOOD_SECRET, cors_origins="https://hads.example",
-                seed_on_startup=False, demo_autopilot=False, data_encryption_key="k" * 44)
+                seed_on_startup=False, demo_autopilot=False, data_encryption_key=_KEY)
     base.update(over)
     return Settings(_env_file=None, **base)
 
@@ -100,3 +103,14 @@ def test_nginx_never_caps_websockets_or_emergency_intake_per_ip():
         assert "api-proxy.conf" in blocks[loc], loc
     m = re.search(r"limit_conn\s+hads_api_conn\s+(\d+)", blocks["/api/"])
     assert m and int(m.group(1)) >= 200
+
+
+@pytest.mark.parametrize("bad", ["k" * 44, "not-a-key", f"{_KEY},garbage"])
+def test_malformed_encryption_key_rejected(bad):
+    """Final review: a non-empty but invalid Fernet key booted 'ready' and then failed every SOS insert with a 500."""
+    assert any("DATA_ENCRYPTION_KEY" in p for p in prod(data_encryption_key=bad).production_problems())
+
+
+def test_rotated_key_pair_is_accepted():
+    other = Fernet.generate_key().decode()
+    assert not prod(data_encryption_key=f"{_KEY},{other}").production_problems()
