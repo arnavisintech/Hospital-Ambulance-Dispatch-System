@@ -22,29 +22,31 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = [], pollMs =
   }
   const fnRef = useRef(fn);
   useLayoutEffect(() => { fnRef.current = fn; });
-  const alive = useRef(true);
+  // Each deps change (and unmount) starts a new generation; a response from an older one is dropped, so a slow
+  // earlier request can never overwrite newer data (e.g. paging quickly through Records).
+  const gen = useRef(0);
 
-  const run = useCallback(async () => {
+  const run = useCallback(async (g: number) => {
     try {
       const d = await fnRef.current();
-      if (alive.current) { setData(d); setError(null); }
+      if (gen.current === g) { setData(d); setError(null); }
     } catch (e) {
-      if (alive.current) setError(errMsg(e));
+      if (gen.current === g) setError(errMsg(e));
     } finally {
-      if (alive.current) setLoading(false);
+      if (gen.current === g) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    alive.current = true;
-    void run();
+    const g = ++gen.current;
+    void run(g);
     let t: ReturnType<typeof setInterval> | undefined;
-    if (pollMs > 0) t = setInterval(() => void run(), pollMs);
-    return () => { alive.current = false; if (t) clearInterval(t); };
+    if (pollMs > 0) t = setInterval(() => void run(g), pollMs);
+    return () => { gen.current++; if (t) clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  const reload = useCallback(() => run(), [run]);
+  const reload = useCallback(() => run(gen.current), [run]);
   return { data, error, loading, reload, setData };
 }
 
