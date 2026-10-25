@@ -57,9 +57,10 @@ export function FleetPanel({ hid }: { hid: number }) {
                   const inMaintenance = u.status === 'maintenance';
                   return (
                     <li key={u.id} className="flex flex-wrap items-center gap-3 py-2.5">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-ink-900 tabular-nums">{u.registration_number}</p>
-                        <p className="text-xs text-ink-500">
+                      {/* min width: in the narrow column the controls wrap below instead of crushing the name */}
+                      <div className="min-w-[9.5rem] flex-1">
+                        <p className="whitespace-nowrap text-sm font-semibold text-ink-900 tabular-nums">{u.registration_number}</p>
+                        <p className="whitespace-nowrap text-xs text-ink-500">
                           {u.kind} · {u.location_age_s == null ? 'no GPS yet' : `GPS ${fmtDurShort(u.location_age_s)} ago`}
                         </p>
                       </div>
