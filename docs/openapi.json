@@ -50,7 +50,7 @@
           "auth"
         ],
         "summary": "Guest",
-        "description": "NFR5: 2-tap SOS. Creates a throw-away requester with a random password.",
+        "description": "NFR5: 2-tap SOS. Creates a throw-away requester with a random password, once per device: a retry with the\nsame device id returns the same account (200). Only a flood guard limits it per IP, because mobile carriers put\nmany phones behind one address and this is the emergency path.",
         "operationId": "guest_api_auth_guest_post",
         "requestBody": {
           "content": {
@@ -4585,16 +4585,19 @@
       "EraseIn": {
         "properties": {
           "password": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Password"
           }
         },
         "type": "object",
-        "required": [
-          "password"
-        ],
         "title": "EraseIn"
       },
       "FeedbackIn": {
@@ -4665,6 +4668,20 @@
               }
             ],
             "title": "Name"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
           },
           "phone": {
             "anyOf": [
