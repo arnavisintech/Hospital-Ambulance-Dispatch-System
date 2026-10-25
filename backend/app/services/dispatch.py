@@ -50,10 +50,11 @@ def lock_request(db: Session, request_id: int, skip_locked: bool = False) -> Eme
     return db.execute(q).scalar_one_or_none()
 
 
-def _lock_ambulance(db: Session, amb_id: int) -> Ambulance | None:
+def _lock_ambulance(db: Session, amb_id: int, wait: bool = False) -> Ambulance | None:
+    """Row-lock a unit. Under _LOCK never wait (None if dispatch holds it); `wait=True` only for callers outside _LOCK."""
     q = select(Ambulance).where(Ambulance.id == amb_id).execution_options(populate_existing=True)
     if _pg(db):
-        q = q.with_for_update(skip_locked=True)
+        q = q.with_for_update(skip_locked=not wait)
     return db.execute(q).scalar_one_or_none()
 
 

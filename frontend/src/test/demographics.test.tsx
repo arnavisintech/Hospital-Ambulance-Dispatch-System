@@ -15,7 +15,7 @@ import { DemographicsCard } from '../pages/admin/shared/DemographicsCard';
 
 const renderCard = () => render(<ToastProvider><DemographicsCard /></ToastProvider>);
 const upload = (text: string) => {
-  const input = screen.getByLabelText(/upload csv/i) as HTMLInputElement;
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement;   // opened by the Import button
   fireEvent.change(input, { target: { files: [new File([text], 'wards.csv', { type: 'text/csv' })] } });
 };
 

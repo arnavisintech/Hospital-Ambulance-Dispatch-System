@@ -54,3 +54,11 @@ describe('<Login> demo accounts', () => {
     expect(screen.queryByText(/demo password/i)).toBeNull();
   });
 });
+
+describe('<Login> resilience (final review minor)', () => {
+  it('still renders when the server lists a role this client does not know', async () => {
+    config = { ...DEMO, demo_accounts: [...DEMO.demo_accounts, { role: 'auditor' as never, label: 'Auditor', email: 'aud@hads.in', hint: 'New' }] };
+    renderLogin();
+    expect(await screen.findAllByRole('button', { name: /sign in as demo/i })).toHaveLength(7);
+  });
+});

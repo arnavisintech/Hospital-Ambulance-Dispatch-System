@@ -5,7 +5,7 @@ import { ChangePasswordModal } from '../../components/ChangePasswordModal';
 import { MobileAppLayout } from '../../components/layout';
 import { Button, Card, CardHeader, Input, Modal, useToast } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
-import { api, errMsg, get } from '../../lib/api';
+import { api, errMsg, get, saveBlob } from '../../lib/api';
 
 /** Account & privacy (DPDP Act): change password, download my data, delete my account. */
 export default function Account() {
@@ -23,12 +23,8 @@ export default function Account() {
     setBusy('export');
     try {
       const data = await get<unknown>('/auth/me/export');
-      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `hads-my-data-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      saveBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+        `hads-my-data-${new Date().toISOString().slice(0, 10)}.json`);
       success('Your data was downloaded');
     } catch (e) { error(e, { title: "Couldn't export your data" }); } finally { setBusy(null); }
   };

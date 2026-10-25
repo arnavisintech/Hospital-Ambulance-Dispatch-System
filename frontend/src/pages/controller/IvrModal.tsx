@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type L from 'leaflet';
 import { Loader2, MapPin, Phone, Search, Send, UserRound } from 'lucide-react';
 import { MapCanvas } from '../../components/map';
@@ -173,7 +173,8 @@ function PlaceSearch({ onPick }: { onPick: (p: PlaceResult) => void }) {
   const [q, setQ] = useState('');
   const found = usePlaceSearch(q);
   const [picked, setPicked] = useState<string | null>(null);   // the list closes once a place is chosen
-  const results = picked !== null && q === picked ? null : found.results;
+  const top = useMemo(() => found.results?.slice(0, 6) ?? null, [found.results]);   // fits the dropdown
+  const results = picked !== null && q === picked ? null : top;
   const loading = found.loading && q !== picked;
   const failed = !!found.error;
   const [active, setActive] = useState(0);

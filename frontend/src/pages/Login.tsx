@@ -23,6 +23,8 @@ const ROLE_LOOK: Record<Role, { icon: LucideIcon; tone: string }> = {
   authority: { icon: BarChart3, tone: 'bg-success-bg text-success' },
 };
 
+const FALLBACK_LOOK = { icon: User, tone: 'bg-canvas text-ink-500' };
+
 export default function Login() {
   const { login, guest } = useAuth();
   const nav = useNavigate();
@@ -98,7 +100,7 @@ export default function Login() {
 
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Demo accounts">
             {demos.map((d) => {
-              const look = ROLE_LOOK[d.role];
+              const look = ROLE_LOOK[d.role] ?? FALLBACK_LOOK;   // a role added server-side must not break sign-in
               return (
                 <li key={d.email}>
                   <button

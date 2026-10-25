@@ -288,10 +288,10 @@ MAX_CSV_BYTES = 5 * 1024 * 1024
 
 
 @router.post("/demographics/import")
-async def import_demographics(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(_admin)):
+def import_demographics(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(_admin)):
     """Replace zone demographics from CSV (lat,lng,households,pop_0_14,pop_15_59,pop_60_74,pop_75_plus).
     All-or-nothing: any bad row rejects the file and the existing data stays."""
-    raw = await file.read(MAX_CSV_BYTES + 1)
+    raw = file.file.read(MAX_CSV_BYTES + 1)   # plain def: DB work runs on a worker thread, never the event loop
     if len(raw) > MAX_CSV_BYTES:
         raise HTTPException(413, "File too large (max 5 MB)")
     try:

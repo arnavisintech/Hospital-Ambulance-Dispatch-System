@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Download, Upload, Users } from 'lucide-react';
 import { Button, Card, CardHeader, useToast } from '../../../components/ui';
 import { useAsync } from '../../../hooks/useAsync';
-import { ApiError, api, errMsg, get } from '../../../lib/api';
+import { ApiError, api, errMsg, get, saveBlob } from '../../../lib/api';
 import { fmtNumber, fmtShare } from '../../../lib/format';
 
 export interface DemographicsSummary {
@@ -39,12 +39,7 @@ export function DemographicsCard() {
   };
 
   const template = () => {
-    const url = URL.createObjectURL(new Blob([TEMPLATE], { type: 'text/csv' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'hads-demographics-template.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    saveBlob(new Blob([TEMPLATE], { type: 'text/csv' }), 'hads-demographics-template.csv');
   };
 
   const d = s.data;
@@ -67,8 +62,8 @@ export function DemographicsCard() {
       )}
       {d?.source === 'import' && <p className="mb-4 text-sm text-ink-500">Using imported data.</p>}
       <div className="flex flex-wrap gap-2">
-        <label className="sr-only" htmlFor="demo-file">Upload CSV</label>
-        <input id="demo-file" ref={input} type="file" accept=".csv,text/csv" className="sr-only"
+        {/* Opened by the Import button; hidden from the tab order and assistive tech so it is not a second, invisible stop. */}
+        <input id="demo-file" ref={input} type="file" accept=".csv,text/csv" className="sr-only" tabIndex={-1} aria-hidden
           onChange={(e) => void upload(e.target.files?.[0])} />
         <Button icon={Upload} loading={busy} onClick={() => input.current?.click()}>Import CSV</Button>
         <Button variant="secondary" icon={Download} onClick={template}>Download template</Button>

@@ -124,7 +124,7 @@ export function saveBlob(blob: Blob, filename: string): void {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);   // some Safari/Firefox versions start the download late
 }
 
 export const get = <T>(path: string, query?: ReqOpts['query']) => api<T>(path, { query });

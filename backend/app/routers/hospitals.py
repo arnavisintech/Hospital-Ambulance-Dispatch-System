@@ -206,7 +206,7 @@ def update_ambulance(hospital_id: int, ambulance_id: int, body: FleetPatch,
                      user: User = Depends(require_roles(Role.hospital_staff, Role.admin)), db: Session = Depends(get_db)):
     """Take a unit out of service (maintenance / not staffed) or back in. Never while it is on a trip."""
     _own_staff(db, user, hospital_id, allow_admin=True)
-    amb = dispatch._lock_ambulance(db, ambulance_id)
+    amb = dispatch._lock_ambulance(db, ambulance_id, wait=True)  # not under _LOCK: wait out a dispatch, never a false 404
     st = db.get(DarkStation, amb.station_id) if amb else None
     if amb is None or st is None or st.hospital_id != hospital_id:
         raise HTTPException(404, "Ambulance not found at this hospital")

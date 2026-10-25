@@ -21,6 +21,13 @@ map "${STADIA_API_KEY}" $stadia_args {
 server {
   listen 80;
   server_name _;
+  # Container healthcheck: answered on plain HTTP in both modes (never redirected to HTTPS).
+  location = /healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok
+";
+  }
   # Either the whole app (HTTP only) or a redirect to HTTPS, chosen at container start.
   include /etc/nginx/hads/http-mode.conf;
 }

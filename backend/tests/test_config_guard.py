@@ -114,3 +114,21 @@ def test_malformed_encryption_key_rejected(bad):
 def test_rotated_key_pair_is_accepted():
     other = Fernet.generate_key().decode()
     assert not prod(data_encryption_key=f"{_KEY},{other}").production_problems()
+
+
+def test_container_healthcheck_and_hsts_hold_in_tls_mode():
+    """Final review minors: in TLS mode port 80 redirects everything, so a healthcheck on '/' follows a 301 to a
+    certificate busybox wget may refuse; and locations with their own add_header dropped the server-level HSTS."""
+    import pathlib
+    import re
+    fe = pathlib.Path(__file__).resolve().parents[2] / "frontend"
+    docker = (fe / "Dockerfile").read_text(encoding="utf-8")
+    template = (fe / "templates/default.conf.template").read_text(encoding="utf-8")
+    assert re.search(r"HEALTHCHECK .*http://127\.0\.0\.1/healthz", docker)
+    port80 = template[template.index("listen 80"):]
+    assert port80.index("location = /healthz") < port80.index("http-mode.conf")   # answered before any redirect
+    headers = (fe / "nginx/security-headers.conf").read_text(encoding="utf-8")
+    assert "include /etc/nginx/hads/hsts.conf;" in headers
+    tls = (fe / "docker-entrypoint.d/40-hads-tls.sh").read_text(encoding="utf-8")
+    assert tls.count("/etc/nginx/hads/hsts.conf") == 2   # written in both modes (empty without a certificate)
+    assert "Strict-Transport-Security" in tls

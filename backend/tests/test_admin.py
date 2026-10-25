@@ -132,3 +132,12 @@ def test_admin_mutations_audited(env):
     actions = {i["action"] for i in r["items"]}
     assert {"admin.hospital.create", "admin.station.create", "admin.ambulance.register", "admin.ambulance.bulk_register",
             "admin.user.create", "admin.settings.update", "admin.station.update", "admin.user.update"} <= actions
+
+
+def test_demographics_import_never_blocks_the_event_loop():
+    """Final review minor: the import ran synchronous DB work (busy timeout up to 15 s) inside an async handler, freezing
+    every websocket and request meanwhile. It must be a plain def so FastAPI runs it on the worker threads."""
+    import inspect
+
+    from app.routers import admin
+    assert not inspect.iscoroutinefunction(admin.import_demographics)

@@ -3,6 +3,7 @@
  * bulk fleet parsing (FR12), insurance-claim transitions (FR10) and platform-setting validation.
  * No React, no DOM (except `downloadCsv`).
  */
+import { saveBlob } from '../../../lib/api';
 
 /* ------------------------------------------------------------------ date range */
 
@@ -106,14 +107,7 @@ export function toCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
 /** Trigger a browser download (UTF-8 BOM so Excel opens ₹ and non-ASCII names correctly). */
 export function downloadCsv(filename: string, csv: string): void {
   const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename.endsWith('.csv') ? filename : `${filename}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  saveBlob(blob, filename.endsWith('.csv') ? filename : `${filename}.csv`);
 }
 
 /** "stations-2026-10-14.csv" */

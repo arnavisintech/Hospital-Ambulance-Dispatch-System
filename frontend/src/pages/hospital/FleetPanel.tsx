@@ -68,7 +68,7 @@ export function FleetPanel({ hid }: { hid: number }) {
                         ariaLabel={`${u.registration_number} staffed`}
                         onChange={(v) => void update(u, { staffed: v }, v ? 'marked staffed' : 'marked not staffed')} />
                       <Button size="sm" variant="secondary" icon={Wrench} disabled={onTrip} loading={busy === u.id}
-                        aria-label={`${inMaintenance ? 'End' : 'Start'} maintenance for ${u.registration_number}`}
+                        aria-label={`${inMaintenance ? 'Back in service' : 'Maintenance'}: ${u.registration_number}`}
                         onClick={() => void update(u, { maintenance: !inMaintenance }, inMaintenance ? 'back in service' : 'in maintenance')}>
                         {inMaintenance ? 'Back in service' : 'Maintenance'}
                       </Button>

@@ -19,5 +19,5 @@ RUN sed -i 's/\r$//' /docker-entrypoint.d/40-hads-tls.sh && chmod +x /docker-ent
 ENV STADIA_API_KEY=""
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80 443
-HEALTHCHECK --interval=15s --timeout=3s --retries=5 CMD wget -q -O /dev/null http://127.0.0.1/ || exit 1
+HEALTHCHECK --interval=15s --timeout=3s --retries=5 CMD wget -q -O /dev/null http://127.0.0.1/healthz || exit 1
 CMD ["nginx", "-g", "daemon off;"]
