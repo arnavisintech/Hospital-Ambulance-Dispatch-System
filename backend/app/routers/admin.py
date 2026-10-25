@@ -9,7 +9,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import audit, demographics
+from .. import audit, demographics, sessions
 from ..db import get_db
 from ..deps import require_roles
 from ..models import (Ambulance, AmbulanceLocation, AmbulanceStatus, ApiClient, DarkStation, EmergencyRequest, Hospital,
@@ -201,7 +201,7 @@ def patch_user(user_id: int, body: UserPatch, db: Session = Depends(get_db), adm
         setattr(u, k, v)
     if changes.get("is_active") is False:
         u.guest_device_hash = None   # a deactivated guest is never handed back through its device id
-        u.token_version = (u.token_version or 0) + 1  # signed-in sessions end immediately
+        sessions.revoke_sessions(db, u)  # signed-in sessions (and open sockets) end immediately
     audit.log(db, "admin.user.update", "user", u.id, admin.id, changes)
     db.commit()
     return ob.user_out(db, u)
@@ -216,7 +216,7 @@ def reset_password(user_id: int, db: Session = Depends(get_db), admin: User = De
     temp = secrets.token_urlsafe(12)
     u.password_hash = hash_password(temp)
     u.must_change_password = True
-    u.token_version = (u.token_version or 0) + 1
+    sessions.revoke_sessions(db, u)
     audit.log(db, "admin.user.reset_password", "user", u.id, admin.id, {})
     db.commit()
     return {"temporary_password": temp}

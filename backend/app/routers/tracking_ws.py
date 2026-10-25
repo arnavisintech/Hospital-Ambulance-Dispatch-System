@@ -43,6 +43,7 @@ def _msg(type_: str, data: dict) -> str:
 async def ws_endpoint(ws: WebSocket, ticket: str = "", topics: str = "", share: str = ""):
     wanted = [t.strip() for t in topics.split(",") if t.strip()]
     payload_filter = None
+    user = None  # share-link sockets are anonymous
     with dbmod.SessionLocal() as db:
         if share and not ticket:
             req = sharing.resolve(db, share)
@@ -63,6 +64,8 @@ async def ws_endpoint(ws: WebSocket, ticket: str = "", topics: str = "", share: 
         await ws.close(code=4403, reason=f"not permitted: {','.join(denied)}")
         return
     await ws.accept()
+    if user is not None:
+        hub.register_user(user.id, ws)   # closed (4401) if this user's sessions are revoked
     for t in wanted:
         await hub.subscribe(t, ws, payload_filter)
     await ws.send_text(_msg("subscribed", {"topics": wanted}))

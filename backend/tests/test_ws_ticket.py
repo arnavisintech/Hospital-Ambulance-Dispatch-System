@@ -52,3 +52,29 @@ def test_jwt_in_url_no_longer_authenticates(client, world):
 
 def test_ticket_requires_authentication(client):
     assert client.post("/api/auth/ws-ticket").status_code == 401
+
+
+@pytest.mark.parametrize("how", ["deactivate", "reset", "password", "erase"])
+def test_revoking_sessions_closes_open_websockets(client, world, how):
+    """Final review: deactivation, password reset/change and erasure revoke tokens; an already-open socket (live
+    controller feed, a requester's trip) must be closed too, not keep streaming."""
+    import time
+    admin = world.user(Role.admin)
+    victim = world.user(Role.controller if how in ("deactivate", "reset") else Role.requester)
+    topic = "controller" if how in ("deactivate", "reset") else f"user:{victim['id']}"
+    with client.websocket_connect(f"/api/ws?ticket={_ticket(client, victim)}&topics={topic}") as ws:
+        assert ws.receive_json()["type"] == "subscribed"
+        if how == "deactivate":
+            client.patch(f"/api/admin/users/{victim['id']}", json={"is_active": False}, headers=admin["h"])
+        elif how == "reset":
+            client.post(f"/api/admin/users/{victim['id']}/reset-password", headers=admin["h"])
+        elif how == "password":
+            client.post("/api/auth/password", json={"current_password": world.password, "new_password": "brand-new-pass-1"},
+                        headers=victim["h"])
+        else:
+            client.request("DELETE", "/api/auth/me", json={"password": world.password}, headers=victim["h"])
+        with pytest.raises(WebSocketDisconnect) as e:
+            deadline = time.time() + 5
+            while time.time() < deadline:
+                ws.receive_json()
+        assert e.value.code == 4401

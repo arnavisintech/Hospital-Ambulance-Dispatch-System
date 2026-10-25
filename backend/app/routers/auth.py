@@ -12,7 +12,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import audit, ratelimit
+from .. import audit, ratelimit, sessions
 from ..db import get_db
 from ..deps import current_user
 from ..models import (BillingRecord, EmergencyRequest, InsuranceClaim, Notification, RequestEvent, RequestStatus, Role,
@@ -209,7 +209,7 @@ def change_password(body: PasswordChangeIn, user: User = Depends(current_user), 
         raise HTTPException(422, "Choose a password different from the current one")
     user.password_hash = hash_password(body.new_password)
     user.must_change_password = False
-    user.token_version = (user.token_version or 0) + 1
+    sessions.revoke_sessions(db, user)
     audit.log(db, "auth.password_change", "user", user.id, user.id, {})
     db.commit()
     return _token_response(db, user)
@@ -305,7 +305,7 @@ def erase_me(body: EraseIn, user: User = Depends(current_user), db: Session = De
     user.is_active = False
     user.erased_at = utcnow()
     user.guest_device_hash = None
-    user.token_version = (user.token_version or 0) + 1
+    sessions.revoke_sessions(db, user)
     user.password_hash = hash_password(secrets.token_urlsafe(24))
     audit.log(db, "auth.erase", "user", user.id, user.id, {"requests_anonymised": len(reqs)})
     db.commit()

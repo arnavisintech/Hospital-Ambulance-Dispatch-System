@@ -22,6 +22,8 @@ class Hub:
         self.loop: asyncio.AbstractEventLoop | None = None
         # per-socket payload filter (anonymous share subscribers); fn(type, data) -> data | None (drop)
         self.filters: dict[WebSocket, callable] = {}
+        # signed-in sockets per user, with the loop serving each: revoking a user's sessions closes them (4401)
+        self.users: dict[int, dict[WebSocket, asyncio.AbstractEventLoop]] = defaultdict(dict)
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop = loop
@@ -35,6 +37,26 @@ class Hub:
         for subs in self.topics.values():
             subs.discard(ws)
         self.filters.pop(ws, None)
+        for socks in self.users.values():
+            socks.pop(ws, None)
+
+    def register_user(self, user_id: int, ws: WebSocket) -> None:
+        """Call from the socket's own task, after accept."""
+        self.users[user_id][ws] = asyncio.get_running_loop()
+
+    def revoke_user(self, user_id: int) -> None:
+        """Close every open socket of a user whose sessions were revoked (thread-safe)."""
+        for ws, loop in list(self.users.pop(user_id, {}).items()):
+            self.unsubscribe_all(ws)
+            coro = _close_quietly(ws)
+            try:
+                running = asyncio.get_running_loop()
+            except RuntimeError:
+                running = None
+            if running is loop:
+                loop.create_task(coro)
+            else:
+                asyncio.run_coroutine_threadsafe(coro, loop)
 
     @staticmethod
     def render(type_: str, data: dict, ts: str) -> str:
@@ -75,6 +97,13 @@ class Hub:
             self.loop.create_task(coro)
         else:
             asyncio.run_coroutine_threadsafe(coro, self.loop)
+
+
+async def _close_quietly(ws: WebSocket) -> None:
+    try:
+        await ws.close(code=4401, reason="session revoked")
+    except Exception:  # noqa: BLE001 - already closing
+        pass
 
 
 hub = Hub()
