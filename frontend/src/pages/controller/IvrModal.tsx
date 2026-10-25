@@ -48,6 +48,8 @@ function IvrForm({ onCreated, center, onCancel }: { onCreated: (r: RequestOut) =
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const map = useRef<L.Map | null>(null);
+  // One id per call: re-sending after a lost reply returns the same request instead of dispatching a second unit.
+  const uuid = useRef(newUuid());
 
   // Reverse-geocode the pin (debounced). Degrades to coordinates when /geo is unavailable.
   useEffect(() => {
@@ -72,11 +74,12 @@ function IvrForm({ onCreated, center, onCancel }: { onCreated: (r: RequestOut) =
     setBusy(true);
     try {
       const r = await post<RequestOut>('/requests/ivr', {
-        client_uuid: newUuid(), lat: pos[0], lng: pos[1], address: address.trim() || undefined, channel: 'ivr',
+        client_uuid: uuid.current, lat: pos[0], lng: pos[1], address: address.trim() || undefined, channel: 'ivr',
         incident_type: incident, severity, notes: notes.trim() || undefined,
         caller_name: name.trim() || undefined, caller_phone: phone.trim() || undefined,
       });
       success(`Request #${r.id} created — finding the nearest ambulance`, { title: 'Dispatch started' });
+      uuid.current = newUuid();
       onCreated(r);
     } catch (e2) { error(e2, { title: "Couldn't create request" }); } finally { setBusy(false); }
   };
