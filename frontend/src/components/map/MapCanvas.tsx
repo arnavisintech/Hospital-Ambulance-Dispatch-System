@@ -102,7 +102,7 @@ let primaryFailed = false;
  *  provider hangs without answering (no errors ever fire then, and the map would stay blank). */
 function BaseTiles() {
   const [provider, setProvider] = useState<TileProvider>(primaryFailed ? OSM_FALLBACK : PRIMARY);
-  const stats = useRef({ ok: 0, err: 0 });
+  const stats = useRef({ started: 0, ok: 0, err: 0 });
   const fallBack = () => { primaryFailed = true; setProvider(OSM_FALLBACK); };
   useEffect(() => {
     if (provider === OSM_FALLBACK) return;
@@ -118,6 +118,7 @@ function BaseTiles() {
       maxZoom={20}
       maxNativeZoom={provider.maxNativeZoom}
       eventHandlers={{
+        tileloadstart: () => { stats.current.started++; },
         tileload: () => { stats.current.ok++; },
         tileerror: () => {
           stats.current.err++;

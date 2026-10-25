@@ -41,8 +41,9 @@ export function primaryTiles(): TileProvider {
 /** No tile within this window (and no error either) means the provider is hanging, e.g. blocked on this network. */
 export const TILE_STALL_MS = 6000;
 
-/** Switch to OSM_FALLBACK when errors dominate, or when nothing has loaded or failed within the stall window. */
-export function shouldFallBack(stats: { ok: number; err: number }, elapsedMs: number): boolean {
+/** Switch to OSM_FALLBACK when errors dominate, or when after the stall window fewer than half of the requested tiles
+ *  have loaded (a hanging provider fires no errors, so the map would otherwise stay blank or half blank). */
+export function shouldFallBack(stats: { started: number; ok: number; err: number }, elapsedMs: number): boolean {
   if (stats.err >= 4 && stats.err > stats.ok) return true;
-  return stats.ok === 0 && elapsedMs >= TILE_STALL_MS;
+  return elapsedMs >= TILE_STALL_MS && stats.ok * 2 < Math.max(stats.started, 1);
 }
