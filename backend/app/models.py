@@ -9,7 +9,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (DDL, JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text,
-                        UniqueConstraint, event, inspect)
+                        TypeDecorator, UniqueConstraint, event, inspect)
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from .crypto import EncryptedText
@@ -18,6 +18,23 @@ from .db import Base
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class UTCDateTime(TypeDecorator):
+    """Timezone-aware UTC timestamps on every database. SQLite stores no offset and hands back naive datetimes, which
+    the API then serialised without one (a browser in IST read them 5.5 h off); this always returns UTC-aware values."""
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None and value.tzinfo is not None:
+            value = value.astimezone(timezone.utc)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
 
 
 def _enum(e):
@@ -110,11 +127,11 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(200))
     role: Mapped[Role] = mapped_column(_enum(Role), index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     token_version: Mapped[int] = mapped_column(Integer, default=0)  # bump to revoke every issued token
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
-    consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # DPDP notice accepted
-    erased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)     # DPDP erasure
+    consented_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)  # DPDP notice accepted
+    erased_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)     # DPDP erasure
     is_guest: Mapped[bool] = mapped_column(Boolean, default=False)   # created by the no-account SOS path
     # SHA-256 of the phone's random guest device id: a retried guest SOS gets the same account back.
     guest_device_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
@@ -129,7 +146,7 @@ class Hospital(Base):
     lng: Mapped[float] = mapped_column(Float)
     partner_verified: Mapped[bool] = mapped_column(Boolean, default=True)  # STRQ2 (onboarding starts it False)
     registration_number: Mapped[str | None] = mapped_column(String(40), unique=True, nullable=True)  # clinical est. reg.
-    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     verified_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     total_beds: Mapped[int] = mapped_column(Integer, default=0)
     available_beds: Mapped[int] = mapped_column(Integer, default=0)
@@ -137,7 +154,7 @@ class Hospital(Base):
     available_icu: Mapped[int] = mapped_column(Integer, default=0)
     # on-duty specialists by speciality key, e.g. {"cardiology": 2, "trauma": 1, "neurology": 0}
     specialists: Mapped[dict] = mapped_column(JSON, default=dict)
-    capacity_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    capacity_updated_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     revenue_share_pct: Mapped[float] = mapped_column(Float, default=70.0)
     stations: Mapped[list["DarkStation"]] = relationship(back_populates="hospital", cascade="all, delete-orphan")
 
@@ -177,7 +194,7 @@ class Ambulance(Base):
     status: Mapped[AmbulanceStatus] = mapped_column(_enum(AmbulanceStatus), default=AmbulanceStatus.available, index=True)
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lng: Mapped[float | None] = mapped_column(Float, nullable=True)
-    location_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    location_updated_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     staffed: Mapped[bool] = mapped_column(Boolean, default=True)  # crew on shift
     station: Mapped[DarkStation] = relationship(back_populates="ambulances")
 
@@ -196,7 +213,7 @@ class AmbulanceLocation(Base):
     ambulance_id: Mapped[int] = mapped_column(ForeignKey("ambulances.id"), index=True)
     lat: Mapped[float] = mapped_column(Float)
     lng: Mapped[float] = mapped_column(Float)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    recorded_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
 
 
 class EmergencyRequest(Base):
@@ -224,10 +241,10 @@ class EmergencyRequest(Base):
     ambulance_id: Mapped[int | None] = mapped_column(ForeignKey("ambulances.id"), nullable=True)
     destination_hospital_id: Mapped[int | None] = mapped_column(ForeignKey("hospitals.id"), nullable=True)
     eta_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)  # to patient, then to hospital
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
-    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # ambulance confirmed
-    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
+    dispatched_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)  # ambulance confirmed
+    accepted_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     match_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)  # NFR1 evidence
     ambulance = relationship("Ambulance")
     destination_hospital = relationship("Hospital")
@@ -242,8 +259,8 @@ class DispatchAttempt(Base):
     rank: Mapped[int] = mapped_column(Integer, default=1)
     eta_seconds: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[AttemptStatus] = mapped_column(_enum(AttemptStatus), default=AttemptStatus.offered)
-    offered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    offered_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    responded_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
 
 class TripRecord(Base):
@@ -254,10 +271,10 @@ class TripRecord(Base):
     # The ambulance's station when the trip ran: units move between stations (and hospitals), their history doesn't.
     station_id: Mapped[int | None] = mapped_column(ForeignKey("dark_stations.id"), nullable=True, index=True)
     destination_hospital_id: Mapped[int | None] = mapped_column(ForeignKey("hospitals.id"), nullable=True)
-    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    arrived_scene_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    arrived_hospital_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    handover_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dispatched_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    arrived_scene_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    arrived_hospital_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    handover_time: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     handover_confirmed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     response_time_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)  # request -> on scene
     distance_km: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -278,7 +295,7 @@ class BillingRecord(Base):
     platform_share: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     payment_status: Mapped[PaymentStatus] = mapped_column(_enum(PaymentStatus), default=PaymentStatus.pending)
     insurance_claim_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     trip = relationship("TripRecord")
 
 
@@ -290,8 +307,8 @@ class InsuranceClaim(Base):
     policy_number: Mapped[str] = mapped_column(String(60))
     amount_claimed: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     status: Mapped[ClaimStatus] = mapped_column(_enum(ClaimStatus), default=ClaimStatus.submitted)
-    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    submitted_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
@@ -299,7 +316,7 @@ class AuditLog(Base):
     """Append-only, hash-chained (NFR7). Never updated or deleted by application code."""
     __tablename__ = "audit_logs"
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    ts: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
     user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     action: Mapped[str] = mapped_column(String(64), index=True)  # e.g. dispatch.assign, capacity.query, trip.handover
     entity: Mapped[str] = mapped_column(String(48))
@@ -332,7 +349,7 @@ class IncidentHistory(Base):
     """Historical + live incident observations feeding the predictive engine (FR3, FR8)."""
     __tablename__ = "incident_history"
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    ts: Mapped[datetime] = mapped_column(UTCDateTime(), index=True)
     lat: Mapped[float] = mapped_column(Float)
     lng: Mapped[float] = mapped_column(Float)
     zone_id: Mapped[str] = mapped_column(String(16), index=True)
@@ -349,7 +366,7 @@ class ZoneRisk(Base):
     __tablename__ = "zone_risk"
     __table_args__ = (UniqueConstraint("generated_at", "zone_id", "hour"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    generated_at: Mapped[datetime] = mapped_column(UTCDateTime(), index=True)
     zone_id: Mapped[str] = mapped_column(String(16), index=True)
     hour: Mapped[int] = mapped_column(Integer)  # 0..23 hour-of-day the prediction is for
     expected_demand: Mapped[float] = mapped_column(Float)  # expected incidents / hour
@@ -368,7 +385,7 @@ class ZoneDemographics(Base):
     pop_60_74: Mapped[int] = mapped_column(Integer, default=0)
     pop_75_plus: Mapped[int] = mapped_column(Integer, default=0)
     source: Mapped[str] = mapped_column(String(12), default="synthetic")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
     @property
     def population(self) -> int:
@@ -387,7 +404,7 @@ class ModelMetric(Base):
     """Prediction-accuracy history (FR11 'prediction accuracy')."""
     __tablename__ = "model_metrics"
     id: Mapped[int] = mapped_column(primary_key=True)
-    trained_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    trained_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     model_version: Mapped[str] = mapped_column(String(32))
     mae: Mapped[float] = mapped_column(Float)
     r2: Mapped[float] = mapped_column(Float)
@@ -398,7 +415,7 @@ class ModelMetric(Base):
 class RebalanceRecommendation(Base):
     __tablename__ = "rebalance_recommendations"
     id: Mapped[int] = mapped_column(primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     ambulance_id: Mapped[int] = mapped_column(ForeignKey("ambulances.id"))
     from_station_id: Mapped[int] = mapped_column(ForeignKey("dark_stations.id"))
     to_station_id: Mapped[int] = mapped_column(ForeignKey("dark_stations.id"))
@@ -420,7 +437,7 @@ class RequestEvent(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(ForeignKey("emergency_requests.id"), index=True)
     status: Mapped[str] = mapped_column(String(32))
-    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     note: Mapped[str | None] = mapped_column(String(120), nullable=True)
     request = relationship("EmergencyRequest")
@@ -435,8 +452,8 @@ class Notification(Base):
     title: Mapped[str] = mapped_column(String(120))
     body: Mapped[str] = mapped_column(String(255), default="")
     data: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
-    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
+    read_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
 
 class ApiClient(Base):
@@ -446,8 +463,8 @@ class ApiClient(Base):
     name: Mapped[str] = mapped_column(String(120), unique=True)
     key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
 
 class ShareLink(Base):
@@ -457,7 +474,7 @@ class ShareLink(Base):
     request_id: Mapped[int] = mapped_column(ForeignKey("emergency_requests.id"), unique=True)
     token: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 # ---------------------------------------------------------------- timeline capture
