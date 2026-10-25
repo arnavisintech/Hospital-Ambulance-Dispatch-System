@@ -90,7 +90,7 @@ def test_admin_system_status(client, world):
     j = client.get("/api/admin/system", headers=admin["h"]).json()
     assert j["dispatch_p50_ms"] == 105.0 and j["dispatch_p95_ms"] == 190.5
     assert j["dispatch_within_target_pct"] == 100.0
-    assert j["audit_chain"]["ok"] is True and j["db_dialect"] == "sqlite"
+    assert j["audit_chain"]["ok"] is True and j["db_dialect"] == SessionLocal().bind.dialect.name
     assert {"version", "mae", "r2", "senior_demand_ratio"} <= set(j["model"]) and "gps_rows" in j and "workers" in j
     assert client.get("/api/admin/system", headers=world.user(Role.controller)["h"]).status_code == 403
 

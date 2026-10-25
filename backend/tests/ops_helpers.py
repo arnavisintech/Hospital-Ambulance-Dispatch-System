@@ -1,9 +1,10 @@
 """Shared fixtures/helpers for the ops/analytics tests (kept out of conftest.py on purpose)."""
+import itertools
 import os
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -16,12 +17,20 @@ from app.seed import seed_if_empty
 from app.services import analytics as analytics_svc
 
 
+_schemas = itertools.count()
+
+
 class Env:
     def __init__(self, seed: bool = True):
         url = os.environ.get("HADS_TEST_OPS_DATABASE_URL")  # a second database: conftest resets the first per test
         if url:
-            self.engine = create_engine(url)
-            Base.metadata.drop_all(self.engine)
+            # One schema per Env, like SQLite's private in-memory database: a module-scoped Env must not be wiped by a
+            # later test that builds its own.
+            schema = f"env_{os.getpid()}_{next(_schemas)}"
+            with create_engine(url).begin() as conn:
+                conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
+                conn.execute(text(f"CREATE SCHEMA {schema}"))
+            self.engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
         else:
             self.engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         Base.metadata.create_all(self.engine)
