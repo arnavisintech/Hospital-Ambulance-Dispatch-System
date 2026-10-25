@@ -37,3 +37,12 @@ export function primaryTiles(): TileProvider {
   if (env.VITE_CARTO_API_KEY) return CARTO_VOYAGER;
   return STADIA_SMOOTH;
 }
+
+/** No tile within this window (and no error either) means the provider is hanging, e.g. blocked on this network. */
+export const TILE_STALL_MS = 6000;
+
+/** Switch to OSM_FALLBACK when errors dominate, or when nothing has loaded or failed within the stall window. */
+export function shouldFallBack(stats: { ok: number; err: number }, elapsedMs: number): boolean {
+  if (stats.err >= 4 && stats.err > stats.ok) return true;
+  return stats.ok === 0 && elapsedMs >= TILE_STALL_MS;
+}

@@ -7,7 +7,7 @@ import { cn } from '../../lib/cn';
 import { CITY_CENTER } from '../../lib/geo';
 import type { LatLng } from '../../lib/types';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
-import { OSM_FALLBACK, primaryTiles, type TileProvider } from '../../lib/mapTiles';
+import { OSM_FALLBACK, TILE_STALL_MS, primaryTiles, shouldFallBack, type TileProvider } from '../../lib/mapTiles';
 
 const PRIMARY = primaryTiles();
 /** Active tile URL / attribution (see lib/mapTiles.ts for provider selection). */
@@ -98,10 +98,17 @@ export function MapCanvas({
 // Once the primary provider has proven unreliable, every map in this session uses the fallback.
 let primaryFailed = false;
 
-/** Primary provider with automatic fallback to OSM when tile errors dominate (e.g. blank tiles at street zoom). */
+/** Primary provider with automatic fallback to OSM when tile errors dominate (e.g. blank tiles at street zoom) or the
+ *  provider hangs without answering (no errors ever fire then, and the map would stay blank). */
 function BaseTiles() {
   const [provider, setProvider] = useState<TileProvider>(primaryFailed ? OSM_FALLBACK : PRIMARY);
   const stats = useRef({ ok: 0, err: 0 });
+  const fallBack = () => { primaryFailed = true; setProvider(OSM_FALLBACK); };
+  useEffect(() => {
+    if (provider === OSM_FALLBACK) return;
+    const t = setTimeout(() => { if (shouldFallBack(stats.current, TILE_STALL_MS)) fallBack(); }, TILE_STALL_MS);
+    return () => clearTimeout(t);
+  }, [provider]);
   return (
     <TileLayer
       key={provider.url}
@@ -114,11 +121,7 @@ function BaseTiles() {
         tileload: () => { stats.current.ok++; },
         tileerror: () => {
           stats.current.err++;
-          const { ok, err } = stats.current;
-          if (provider !== OSM_FALLBACK && err >= 4 && err > ok) {
-            primaryFailed = true;
-            setProvider(OSM_FALLBACK);
-          }
+          if (provider !== OSM_FALLBACK && shouldFallBack(stats.current, 0)) fallBack();
         },
       }}
     />
