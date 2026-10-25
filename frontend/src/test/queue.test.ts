@@ -44,7 +44,7 @@ describe('offline queue', () => {
     expect(isRetryable(new ApiError(0, ''))).toBe(true);
     expect(isRetryable(new ApiError(503, ''))).toBe(true);
     expect(isRetryable(new ApiError(400, ''))).toBe(false);
-    expect(isRetryable(new ApiError(401, ''))).toBe(false);
+    expect(isRetryable(new ApiError(403, ''))).toBe(false);
   });
 
   it('backs off exponentially with a cap', () => {

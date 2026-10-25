@@ -38,11 +38,12 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = [], pollMs =
   }, []);
 
   useEffect(() => {
-    const g = ++gen.current;
+    const counter = gen;   // a generation counter, not a DOM ref: bumping it in cleanup is the point
+    const g = ++counter.current;
     void run(g);
     let t: ReturnType<typeof setInterval> | undefined;
     if (pollMs > 0) t = setInterval(() => void run(g), pollMs);
-    return () => { gen.current++; if (t) clearInterval(t); };
+    return () => { counter.current++; if (t) clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 

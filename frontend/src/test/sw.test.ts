@@ -53,3 +53,21 @@ describe('manifest', () => {
     expect(Array.isArray(m.icons) && (m.icons as unknown[]).length).toBeTruthy();
   });
 });
+
+describe('precache build step (final review F1/F7)', () => {
+  const src = readFileSync(resolve(__dirname, '../../public/sw.js'), 'utf8');
+
+  it('sw.js carries a placeholder the build fills with every hashed asset', async () => {
+    const { injectPrecache, PRECACHE_MARKER } = await import('../lib/precache');
+    expect(src).toContain(PRECACHE_MARKER);
+    const out = injectPrecache(src, ['assets/index-abc.js', 'assets/Sos-def.js', 'index.html']);
+    expect(out).not.toContain(PRECACHE_MARKER);
+    expect(out).toContain('["/assets/Sos-def.js","/assets/index-abc.js"]');
+    expect(out).not.toContain('"/index.html"');   // the shell is precached separately
+  });
+
+  it('prunes assets from older builds when the new worker activates', () => {
+    expect(src).toMatch(/BUILD_ASSETS/);
+    expect(src).toMatch(/c\.delete\(/);
+  });
+});

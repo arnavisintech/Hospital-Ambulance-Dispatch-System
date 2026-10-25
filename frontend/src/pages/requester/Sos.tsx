@@ -7,6 +7,7 @@ import { MapCanvas } from '../../components/map';
 import { Button, SegmentedControl, Textarea, useToast } from '../../components/ui';
 import { AGE_OPTIONS, buildSosBody, receiptMessage, type AgeGroup } from './trip';
 import { notifyQueueChanged } from '../../components/QueueBanner';
+import { useAuth } from '../../context/AuthContext';
 import { useAsync } from '../../hooks/useAsync';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { ApiError, get, post } from '../../lib/api';
@@ -30,6 +31,7 @@ const HAS_GPS = typeof navigator !== 'undefined' && 'geolocation' in navigator;
  */
 export default function Sos() {
   const nav = useNavigate();
+  const owner = useAuth().user?.id;
   const isDesktop = useIsDesktop();
   const { toast, error } = useToast();
   const uuid = useRef(newUuid());
@@ -129,10 +131,12 @@ export default function Sos() {
       nav(`/track/${r.id}`);
     } catch (err) {
       if (isRetryable(err)) {
-        enqueue(body);
+        enqueue(body, owner);
         notifyQueueChanged();
         setQueued(true);
-        toast('No connection — your SOS is saved and will send automatically', 'info');
+        toast((err as ApiError).status === 401
+          ? 'Your session expired — sign in again and your saved SOS will send'
+          : 'No connection — your SOS is saved and will send automatically', 'info');
       } else {
         error(err);
       }

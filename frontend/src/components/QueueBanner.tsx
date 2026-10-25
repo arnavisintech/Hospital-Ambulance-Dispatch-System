@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { WifiOff } from 'lucide-react';
 import { post } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { backoffMs, flushQueue, loadQueue } from '../lib/queue';
 import type { RequestOut } from '../lib/types';
@@ -11,7 +12,8 @@ export const notifyQueueChanged = () => window.dispatchEvent(new Event(QUEUE_EVE
 
 /** Shows queued (offline) SOS requests and retries them automatically (UC-1 E1). */
 export function QueueBanner() {
-  const [count, setCount] = useState(() => loadQueue().length);
+  const owner = useAuth().user?.id;
+  const [count, setCount] = useState(() => loadQueue(owner).length);
   const [retrying, setRetrying] = useState(false);
   const attempt = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout>>();
@@ -20,11 +22,11 @@ export function QueueBanner() {
   const busy = useRef(false);
 
   const flush = useCallback(async () => {
-    if (busy.current || loadQueue().length === 0) { setCount(loadQueue().length); return; }
+    if (busy.current || loadQueue(owner).length === 0) { setCount(loadQueue(owner).length); return; }
     busy.current = true;
     setRetrying(true);
     try {
-      const res = await flushQueue((b) => post<RequestOut>('/requests', b));
+      const res = await flushQueue((b) => post<RequestOut>('/requests', b), owner);
       setCount(res.remaining);
       if (res.sent.length) {
         attempt.current = 0;
@@ -39,11 +41,11 @@ export function QueueBanner() {
       busy.current = false;
       setRetrying(false);
     }
-  }, [nav, toast]);
+  }, [nav, toast, owner]);
 
   useEffect(() => {
     const onChange = () => {
-      setCount(loadQueue().length);
+      setCount(loadQueue(owner).length);
       if (timer.current) clearTimeout(timer.current);
       attempt.current = 0;
       timer.current = setTimeout(() => void flush(), 1500);
@@ -57,7 +59,7 @@ export function QueueBanner() {
       window.removeEventListener('online', onOnline);
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [flush]);
+  }, [flush, owner]);
 
   if (count === 0) return null;
   return (

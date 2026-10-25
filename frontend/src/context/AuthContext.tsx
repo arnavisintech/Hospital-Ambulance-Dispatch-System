@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, get, getToken, onUnauthorized, post, setToken } from '../lib/api';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ApiError, api, get, getToken, onUnauthorized, post, setToken } from '../lib/api';
 import { clearGuestDevice, guestDeviceId } from '../lib/device';
+import { clearQueue } from '../lib/queue';
 import type { TokenResponse, User } from '../lib/types';
 
 interface AuthCtx {
@@ -16,6 +17,23 @@ interface AuthCtx {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
+// The last signed-in user, kept with the token so the app (and the SOS screen) still opens without a connection.
+const USER_KEY = 'hads_user';
+function cachedUser(): User | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch { return null; }
+}
+function cacheUser(u: User | null): void {
+  try {
+    if (u) localStorage.setItem(USER_KEY, JSON.stringify(u));
+    else localStorage.removeItem(USER_KEY);
+  } catch { /* storage blocked: online-only session restore */ }
+}
+/** No answer from the server (offline, gateway down): the session may still be valid. */
+const unreachable = (e: unknown) => e instanceof ApiError && (e.status === 0 || e.status >= 500);
+
 export function useAuth(): AuthCtx {
   const c = useContext(Ctx);
   if (!c) throw new Error('useAuth outside AuthProvider');
@@ -23,27 +41,38 @@ export function useAuth(): AuthCtx {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUserState] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(() => !!getToken());
+  const setUser = useCallback((u: User | null) => { cacheUser(u); setUserState(u); }, []);
+  const userRef = useRef<User | null>(null);
+  useEffect(() => { userRef.current = user; }, [user]);
 
-  const logout = useCallback(() => { setToken(null); setUser(null); clearGuestDevice(); }, []);
+  // Explicit sign-out (also after erasure) forgets this user's unsent SOS; an expired session (401) keeps it.
+  const logout = useCallback(() => {
+    if (userRef.current) clearQueue(userRef.current.id);
+    setToken(null); setUser(null); clearGuestDevice();
+  }, [setUser]);
 
   useEffect(() => {
     onUnauthorized(() => setUser(null));
     return () => onUnauthorized(null);
-  }, []);
+  }, [setUser]);
 
   useEffect(() => {
     if (!getToken()) return; // `loading` already started false: there is no session to restore
     let alive = true;
     get<User>('/auth/me')
       .then((u) => { if (alive) setUser(u); })
-      .catch(() => { /* 401 handled globally; other errors leave user logged out */ if (alive) setUser(null); })
+      .catch((e) => {
+        if (!alive) return;
+        // Offline: carry on as the cached user (the token is re-checked on the next request). 401 is handled globally.
+        setUser(unreachable(e) && getToken() ? cachedUser() : null);
+      })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, []);
+  }, [setUser]);
 
-  const accept = (r: TokenResponse) => { setToken(r.token); setUser(r.user); return r.user; };
+  const accept = useCallback((r: TokenResponse) => { setToken(r.token); setUser(r.user); return r.user; }, [setUser]);
 
   const value = useMemo<AuthCtx>(() => ({
     user,
@@ -55,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     guest: async (b = {}) => accept(await post<TokenResponse>('/auth/guest', { ...b, device_id: guestDeviceId() })),
     changePassword: async (current, next) =>
       accept(await post<TokenResponse>('/auth/password', { current_password: current, new_password: next })),
-  }), [user, loading, logout]);
+  }), [user, loading, logout, accept]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
