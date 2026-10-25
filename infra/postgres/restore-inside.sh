@@ -11,6 +11,9 @@ find "$PGDATA" -mindepth 1 -delete
 tar -xzf "$SRC/base.tar.gz" -C "$PGDATA"
 mkdir -p "$PGDATA/pg_wal"
 tar -xzf "$SRC/pg_wal.tar.gz" -C "$PGDATA/pg_wal"
+# A base backup of a previously restored server carries that restore's settings: drop them, or an old
+# recovery_target_time would silently cut this replay short.
+sed -i -E '/^[[:space:]]*(restore_command|recovery_target[a-z_]*)[[:space:]]*=/d' "$PGDATA/postgresql.auto.conf" 2>/dev/null || true
 {
   echo "restore_command = 'cp /wal/%f %p'"
   echo "recovery_target_action = 'promote'"

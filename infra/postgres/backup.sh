@@ -16,6 +16,7 @@ ls -1d /backups/*/BACKUP_OK 2>/dev/null | sed 's#/BACKUP_OK##' | sort | head -n 
 done
 OLDEST=$(ls -1d /backups/*/BACKUP_OK 2>/dev/null | sed 's#/BACKUP_OK##' | sort | head -n 1)
 if [ -n "$OLDEST" ] && [ -d /wal ]; then
-  find /wal -type f ! -newer "$OLDEST/STARTED" -mmin +60 -delete
+  # timeline .history files are tiny and needed by any later point-in-time recovery: never prune them
+  find /wal -type f ! -name '*.history' ! -newer "$OLDEST/STARTED" -mmin +60 -delete
 fi
 echo "backup: $ID complete ($(du -sh "$DIR" | cut -f1)); keeping $KEEP"
