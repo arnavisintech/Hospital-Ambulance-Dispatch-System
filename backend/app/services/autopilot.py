@@ -154,7 +154,7 @@ class Autopilot:
                 u.mode, u.due = "handover_wait", now + HANDOVER_WAIT_S / self.speedup
             elif now >= u.due:
                 with dispatch._LOCK:
-                    locked = dispatch.lock_request(db, req.id)
+                    locked = dispatch.lock_request(db, req.id, skip_locked=True)   # busy: retry next tick
                     if locked is not None and locked.status == RS.arrived:  # staff may have confirmed meanwhile
                         trips.close_trip(db, locked, None, actor_note=ACTOR)
                 u.reset()

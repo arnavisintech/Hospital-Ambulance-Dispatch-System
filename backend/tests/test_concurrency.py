@@ -155,3 +155,31 @@ def test_cancel_during_dispatch_is_never_overwritten(world, monkeypatch):
         assert db.get(EmergencyRequest, rid).ambulance_id is None
         assert db.get(Ambulance, amb).status == AmbulanceStatus.available
         assert db.execute(select(DispatchAttempt).where(DispatchAttempt.request_id == rid)).first() is None
+
+
+def test_dispatcher_never_waits_on_a_row_lock_while_holding_the_dispatch_lock(world, monkeypatch):
+    """Security review (deadlock): routes row-lock a request and then take _LOCK (cancel, crew accept, manual assign).
+    If code holding _LOCK waited on a row lock, PostgreSQL would deadlock invisibly. So every row lock taken under
+    _LOCK must skip locked rows (the request is retried by the next sweep)."""
+    from sqlalchemy.dialects import postgresql
+    _fleet(world, 2)
+    with SessionLocal() as db:
+        db.add_all([EmergencyRequest(lat=PATIENT[0], lng=PATIENT[1], severity=3) for _ in range(2)])
+        db.commit()
+    calls = []
+    real_req, real_amb = dispatch.lock_request, dispatch._lock_ambulance
+
+    def spy_req(db, rid, **kw):
+        calls.append(("request", dispatch._LOCK._is_owned(), kw.get("skip_locked", False)))
+        return real_req(db, rid, **kw)
+
+    def spy_amb(db, aid, **kw):
+        calls.append(("ambulance", dispatch._LOCK._is_owned(), True))   # _lock_ambulance always skips locked rows
+        return real_amb(db, aid, **kw)
+    monkeypatch.setattr(dispatch, "lock_request", spy_req)
+    monkeypatch.setattr(dispatch, "_lock_ambulance", spy_amb)
+    dispatch.run_dispatch()
+    under_lock = [c for c in calls if c[1]]
+    assert under_lock and all(skip for _, _, skip in under_lock)
+    q = dispatch._request_lock_query(1, skip_locked=True)
+    assert "FOR UPDATE SKIP LOCKED" in str(q.compile(dialect=postgresql.dialect()))

@@ -48,8 +48,11 @@ def _my_ambulance(db: Session, user: User) -> Ambulance:
 
 
 def _my_request(db: Session, amb: Ambulance, request_id: int, lock: bool = False) -> EmergencyRequest:
-    req = dispatch.lock_request(db, request_id) if lock else db.get(EmergencyRequest, request_id)
+    """lock=True is used under dispatch._LOCK, so the row lock skips (409 busy) instead of waiting (lock order)."""
+    req = dispatch.lock_request(db, request_id, skip_locked=True) if lock else db.get(EmergencyRequest, request_id)
     if req is None:
+        if lock and db.get(EmergencyRequest, request_id) is not None:
+            raise HTTPException(409, "The request is being updated; try again")
         raise HTTPException(404, "Request not found")
     if req.ambulance_id != amb.id:
         raise HTTPException(403, "This request is not assigned to your ambulance")

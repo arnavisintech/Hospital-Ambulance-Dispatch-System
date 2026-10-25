@@ -35,10 +35,18 @@ def _pg(db: Session) -> bool:
     return db.get_bind().dialect.name == "postgresql"
 
 
-def lock_request(db: Session, request_id: int) -> EmergencyRequest | None:
-    q = select(EmergencyRequest).where(EmergencyRequest.id == request_id).execution_options(populate_existing=True)
+def _request_lock_query(request_id: int, skip_locked: bool = False):
+    return (select(EmergencyRequest).where(EmergencyRequest.id == request_id)
+            .execution_options(populate_existing=True).with_for_update(skip_locked=skip_locked))
+
+
+def lock_request(db: Session, request_id: int, skip_locked: bool = False) -> EmergencyRequest | None:
+    """Fresh copy of the request, row-locked on PostgreSQL. Lock order is _LOCK, then rows: routes may lock a row and
+    then take _LOCK, so code already holding _LOCK must pass skip_locked=True (None = busy, retry later) and never wait
+    on a row lock, or PostgreSQL could deadlock against an invisible process lock."""
     if _pg(db):
-        q = q.with_for_update()
+        return db.execute(_request_lock_query(request_id, skip_locked)).scalar_one_or_none()
+    q = select(EmergencyRequest).where(EmergencyRequest.id == request_id).execution_options(populate_existing=True)
     return db.execute(q).scalar_one_or_none()
 
 
@@ -126,7 +134,7 @@ def _escalate(db: Session, req: EmergencyRequest, reason: str, silent: bool = Fa
 
 def _dispatch_one(db: Session, req: EmergencyRequest, started: float, silent_if_none: bool = False) -> bool:
     """Offer `req` to the best available ambulance. Caller holds _LOCK. Returns True when offered."""
-    req = lock_request(db, req.id)   # fresh state: it may have been cancelled while it waited in the drain
+    req = lock_request(db, req.id, skip_locked=True)   # fresh state (it may have been cancelled meanwhile); busy -> next sweep
     if req is None or req.status not in (RS.received, RS.matching):
         return False
     if req.status == RS.received:
@@ -270,7 +278,7 @@ def expire_stale_offers(now: datetime | None = None) -> list[int]:
         ids = db.execute(select(EmergencyRequest.id).where(EmergencyRequest.status == RS.offered)).scalars().all()
         for rid in ids:
             with _LOCK:
-                req = lock_request(db, rid)
+                req = lock_request(db, rid, skip_locked=True)   # busy row: retried on the next tick
                 att = db.execute(select(DispatchAttempt).where(DispatchAttempt.request_id == rid,
                                                                DispatchAttempt.status == AttemptStatus.offered)
                                  .order_by(DispatchAttempt.id.desc())).scalars().first()
@@ -288,7 +296,10 @@ def expire_stale_offers(now: datetime | None = None) -> list[int]:
 def assign_manual(db: Session, req: EmergencyRequest, amb_id: int, user_id: int, reason: str | None = None) -> EmergencyRequest:
     """Controller override / cross-station reassignment (UC-2 A1). Audited. Caller has authorised the user."""
     with _LOCK:
-        req = lock_request(db, req.id)
+        rid = req.id
+        req = lock_request(db, rid, skip_locked=True)
+        if req is None:
+            raise trips.HTTPException(409, "The request is being updated; try again")
         if req.status not in (RS.received, RS.matching, RS.awaiting_manual, RS.offered, RS.accepted, RS.en_route):
             raise trips.HTTPException(409, f"Cannot assign an ambulance while request is {req.status.value}")
         amb = _lock_ambulance(db, amb_id)

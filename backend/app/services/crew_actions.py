@@ -91,8 +91,10 @@ def heartbeat(db: Session, amb: Ambulance, now=None) -> None:
 # ---------------------------------------------------------------- UC-2 acceptance
 def accept_offer(db: Session, amb: Ambulance, request_id: int, user_id: int | None, actor: str | None = None) -> EmergencyRequest:
     with dispatch._LOCK:
-        req = dispatch.lock_request(db, request_id)
+        req = dispatch.lock_request(db, request_id, skip_locked=True)   # under _LOCK: never wait on a row lock
         if req is None:
+            if db.get(EmergencyRequest, request_id) is not None:
+                raise HTTPException(409, "The request is being updated; try again")
             raise HTTPException(404, "Request not found")
         if req.ambulance_id != amb.id:
             raise HTTPException(403, "This request is not assigned to your ambulance")
