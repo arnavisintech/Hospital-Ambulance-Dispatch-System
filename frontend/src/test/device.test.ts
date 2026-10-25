@@ -1,13 +1,26 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { guestDeviceId } from '../lib/device';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearGuestDevice, guestDeviceId } from '../lib/device';
 
-describe('guestDeviceId', () => {
+describe('guestDeviceId (a short-lived retry key, never a lasting credential)', () => {
   beforeEach(() => localStorage.clear());
-  it('is a long random id, stable on this device, so a retried guest SOS reuses the same account', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('is a long random id, reused for retries within the window', () => {
     const a = guestDeviceId();
     expect(a).toMatch(/^[A-Za-z0-9-]{32,64}$/);
     expect(guestDeviceId()).toBe(a);
-    localStorage.clear();
+  });
+
+  it('expires after 10 minutes, so the next person on a shared phone gets a new guest', () => {
+    vi.useFakeTimers();
+    const a = guestDeviceId();
+    vi.advanceTimersByTime(11 * 60 * 1000);
+    expect(guestDeviceId()).not.toBe(a);
+  });
+
+  it('is forgotten on sign-out', () => {
+    const a = guestDeviceId();
+    clearGuestDevice();
     expect(guestDeviceId()).not.toBe(a);
   });
 });

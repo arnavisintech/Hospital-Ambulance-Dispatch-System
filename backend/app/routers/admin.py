@@ -200,6 +200,7 @@ def patch_user(user_id: int, body: UserPatch, db: Session = Depends(get_db), adm
     for k, v in changes.items():
         setattr(u, k, v)
     if changes.get("is_active") is False:
+        u.guest_device_hash = None   # a deactivated guest is never handed back through its device id
         u.token_version = (u.token_version or 0) + 1  # signed-in sessions end immediately
     audit.log(db, "admin.user.update", "user", u.id, admin.id, changes)
     db.commit()

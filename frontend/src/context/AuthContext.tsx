@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, get, getToken, onUnauthorized, post, setToken } from '../lib/api';
-import { guestDeviceId } from '../lib/device';
+import { clearGuestDevice, guestDeviceId } from '../lib/device';
 import type { TokenResponse, User } from '../lib/types';
 
 interface AuthCtx {
@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(() => !!getToken());
 
-  const logout = useCallback(() => { setToken(null); setUser(null); }, []);
+  const logout = useCallback(() => { setToken(null); setUser(null); clearGuestDevice(); }, []);
 
   useEffect(() => {
     onUnauthorized(() => setUser(null));

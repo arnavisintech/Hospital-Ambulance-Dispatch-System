@@ -4,6 +4,7 @@ import re
 import secrets
 import threading
 import time
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
@@ -26,7 +27,9 @@ _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _PHONE = re.compile(r"^\+?[0-9][0-9\- ]{6,18}$")
 LOGIN_FAILURES = ratelimit.limiter("login_failures", 5, 900)  # 5 wrong passwords / 15 min per IP + identifier
 _signup = ratelimit.limit("signup", 10, 3600)                # account registration: 10 / hour per IP
-_guest_flood_guard = ratelimit.limit("guest", 600, 3600)     # guest SOS: flood guard only (CGNAT shares IPs)
+_guest_flood_guard = ratelimit.limit("guest", 600, 3600)     # guest SOS calls incl. retries: flood guard only
+GUEST_NEW = ratelimit.limiter("guest_new", 120, 3600)        # new guest accounts per IP (retries are free; CGNAT)
+GUEST_RETRY_WINDOW = timedelta(minutes=10)                   # device id = retry key, never a lasting credential
 
 
 def user_out(db: Session, u: User) -> dict:
@@ -125,19 +128,31 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
     return _token_response(db, u)
 
 
+def _retry_of(u: User) -> bool:
+    """A device id brings back only a live guest session created within the retry window."""
+    created = trips.aware(u.created_at) if u.created_at else None
+    return (u.is_guest and u.is_active and u.erased_at is None and (u.token_version or 0) == 0
+            and created is not None and utcnow() - created <= GUEST_RETRY_WINDOW)
+
+
 @router.post("/guest", status_code=201, dependencies=[Depends(_guest_flood_guard)])
-def guest(response: Response, body: GuestIn | None = None, db: Session = Depends(get_db)):
+def guest(response: Response, request: Request, body: GuestIn | None = None, db: Session = Depends(get_db)):
     """NFR5: 2-tap SOS. Creates a throw-away requester with a random password, once per device: a retry with the
     same device id returns the same account (200). Only a flood guard limits it per IP, because mobile carriers put
     many phones behind one address and this is the emergency path."""
     body = body or GuestIn()
     device_hash = hashlib.sha256(body.device_id.encode()).hexdigest() if body.device_id else None
     if device_hash:
-        known = db.execute(select(User).where(User.guest_device_hash == device_hash, User.erased_at.is_(None),
-                                              User.is_active.is_(True))).scalar_one_or_none()
-        if known is not None:
+        known = db.execute(select(User).where(User.guest_device_hash == device_hash)).scalar_one_or_none()
+        if known is not None and _retry_of(known):
             response.status_code = 200
             return _token_response(db, known)
+        if known is not None:   # outside the retry window (or revoked): the key is spent; this is a new person
+            known.guest_device_hash = None
+            db.flush()
+    ok, retry = GUEST_NEW.hit(f"guest_new:{ratelimit.client_ip(request)}")
+    if not ok:
+        raise ratelimit.too_many(retry, "Too many new guest sessions from this network; call 108 if this is urgent")
     phone = body.phone
     if phone and db.execute(select(User).where(User.phone == phone)).first():
         phone = None  # never attach to / take over an existing account; SOS must still succeed
@@ -147,10 +162,13 @@ def guest(response: Response, body: GuestIn | None = None, db: Session = Depends
     db.add(u)
     try:
         db.flush()
-    except IntegrityError:   # the same device's retry won the race: return that account
+    except IntegrityError:   # a concurrent retry from the same device created it first: return that account
         db.rollback()
+        known = db.execute(select(User).where(User.guest_device_hash == device_hash)).scalar_one_or_none()             if device_hash else None
+        if known is None or not _retry_of(known):
+            raise HTTPException(409, "Please try again")
         response.status_code = 200
-        return _token_response(db, db.execute(select(User).where(User.guest_device_hash == device_hash)).scalar_one())
+        return _token_response(db, known)
     audit.log(db, "auth.guest", "user", u.id, u.id, {})
     db.commit()
     return _token_response(db, u)
@@ -234,7 +252,7 @@ def consume_ticket(db: Session, ticket: str) -> User | None:
 
 # ---------------------------------------------------------------- DPDP: export and erasure
 class EraseIn(BaseModel):
-    password: str = Field(min_length=1, max_length=200)
+    password: str | None = Field(default=None, max_length=200)   # not needed for guest accounts (they never see one)
 
 
 @router.get("/me/export")
@@ -262,7 +280,7 @@ def export_my_data(user: User = Depends(current_user), db: Session = Depends(get
 @router.delete("/me")
 def erase_me(body: EraseIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Right to erasure: remove personal data, keep de-identified trip, billing and audit records (legal retention)."""
-    if not verify_password(body.password, user.password_hash):
+    if not user.is_guest and not (body.password and verify_password(body.password, user.password_hash)):
         raise HTTPException(403, "Password is incorrect")
     reqs = db.execute(select(EmergencyRequest).where(EmergencyRequest.requester_id == user.id)).scalars().all()
     if any(r.status not in trips.TERMINAL for r in reqs):
@@ -272,6 +290,7 @@ def erase_me(body: EraseIn, user: User = Depends(current_user), db: Session = De
     user.name, user.email, user.phone = "Erased user", None, None
     user.is_active = False
     user.erased_at = utcnow()
+    user.guest_device_hash = None
     user.token_version = (user.token_version or 0) + 1
     user.password_hash = hash_password(secrets.token_urlsafe(24))
     audit.log(db, "auth.erase", "user", user.id, user.id, {"requests_anonymised": len(reqs)})

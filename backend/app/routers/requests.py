@@ -1,7 +1,7 @@
 """Emergency request intake and tracking (UC-1, FR1, FR6)."""
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -16,6 +16,9 @@ from ..services import dispatch, sharing, tracking as tracking_svc, trips
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
 SOS_LIMIT = ratelimit.limiter("sos", 20, 3600)  # new requests per requester per hour; controllers exempt
+# Guest accounts are cheap to make, so their SOS also share a per-IP cap: far above real emergency volume behind one
+# carrier address, but it stops a scripted flood of fake SOS from tying up the fleet.
+GUEST_SOS_IP = ratelimit.limiter("guest_sos_ip", 60, 3600)
 
 
 class RequestIn(BaseModel):
@@ -41,7 +44,8 @@ class FeedbackIn(BaseModel):
     comment: str | None = Field(default=None, max_length=1000)
 
 
-def _create(body: RequestIn, user: User, channel: str, db: Session, bg: BackgroundTasks, response: Response) -> dict:
+def _create(body: RequestIn, user: User, channel: str, db: Session, bg: BackgroundTasks, response: Response,
+            client_ip: str | None = None) -> dict:
     if body.client_uuid:  # idempotent retry (UC-1 E1)
         existing = db.execute(select(EmergencyRequest).where(EmergencyRequest.client_uuid == body.client_uuid)).scalar_one_or_none()
         if existing is not None:
@@ -56,6 +60,10 @@ def _create(body: RequestIn, user: User, channel: str, db: Session, bg: Backgrou
         ok, retry = SOS_LIMIT.hit(f"sos:{user.id}")
         if not ok:
             raise ratelimit.too_many(retry, "Too many new requests from this account; call 108 if this is urgent")
+        if user.is_guest and client_ip:
+            ok, retry = GUEST_SOS_IP.hit(f"guest_sos:{client_ip}")
+            if not ok:
+                raise ratelimit.too_many(retry, "Too many requests from this network; call 108 if this is urgent")
     req = EmergencyRequest(
         client_uuid=body.client_uuid, requester_id=user.id if is_requester else None,
         caller_name=body.caller_name or (user.name if is_requester else None),
@@ -94,10 +102,10 @@ def _estimated_wait(db: Session, req: EmergencyRequest) -> int | None:
 
 
 @router.post("", status_code=201)
-def create_request(body: RequestIn, response: Response, bg: BackgroundTasks,
+def create_request(body: RequestIn, response: Response, bg: BackgroundTasks, request: Request,
                    user: User = Depends(require_roles(Role.requester, Role.controller)), db: Session = Depends(get_db)):
     channel = body.channel if user.role == Role.controller else "app"
-    return _create(body, user, channel, db, bg, response)
+    return _create(body, user, channel, db, bg, response, ratelimit.client_ip(request))
 
 
 @router.post("/ivr", status_code=201)
