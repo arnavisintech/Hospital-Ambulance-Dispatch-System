@@ -128,3 +128,30 @@ def test_watcher_sweeps_stranded_requests(world, monkeypatch):
     asyncio.run(one_tick())
     with SessionLocal() as db:
         assert db.get(EmergencyRequest, rid).status == RequestStatus.offered
+
+
+def test_cancel_during_dispatch_is_never_overwritten(world, monkeypatch):
+    """Final review: a cancel that lands while the request waits in the dispatch drain (e.g. during the routing call)
+    must win: no ambulance is offered to a cancelled call."""
+    from app.services import routing, trips
+    amb = _fleet(world, 1)[0]
+    with SessionLocal() as db:
+        req = EmergencyRequest(lat=PATIENT[0], lng=PATIENT[1], severity=3)
+        db.add(req)
+        db.commit()
+        rid = req.id
+    real = routing.eta_many
+
+    def eta_many_then_cancel(*a, **kw):
+        with SessionLocal() as other:                 # the requester cancels while routing is in flight
+            r = other.get(EmergencyRequest, rid)
+            if r.status not in trips.TERMINAL:
+                trips.cancel_request(other, r, None, "changed my mind")
+        return real(*a, **kw)
+    monkeypatch.setattr(routing, "eta_many", eta_many_then_cancel)
+    dispatch.run_dispatch(rid)
+    with SessionLocal() as db:
+        assert db.get(EmergencyRequest, rid).status == RequestStatus.cancelled
+        assert db.get(EmergencyRequest, rid).ambulance_id is None
+        assert db.get(Ambulance, amb).status == AmbulanceStatus.available
+        assert db.execute(select(DispatchAttempt).where(DispatchAttempt.request_id == rid)).first() is None

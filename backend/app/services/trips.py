@@ -322,7 +322,13 @@ def close_trip(db: Session, req: EmergencyRequest, user_id: int | None, *, manua
 
 
 def cancel_request(db: Session, req: EmergencyRequest, user_id: int | None, reason: str | None = None) -> None:
-    from . import capacity
+    from . import capacity, dispatch  # local imports: both import trips
+    with dispatch._LOCK:   # serialised with the dispatcher, so an assignment can never land on a cancelled call
+        _cancel_request(db, req, user_id, reason, capacity)
+
+
+def _cancel_request(db: Session, req: EmergencyRequest, user_id: int | None, reason: str | None, capacity) -> None:
+    db.refresh(req)
     if req.status in TERMINAL:
         raise HTTPException(409, f"Request already {req.status.value}")
     if req.status in (RS.transporting, RS.arrived):

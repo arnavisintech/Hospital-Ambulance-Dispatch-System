@@ -123,6 +123,9 @@ def _escalate(db: Session, req: EmergencyRequest, reason: str, silent: bool = Fa
 
 def _dispatch_one(db: Session, req: EmergencyRequest, started: float, silent_if_none: bool = False) -> bool:
     """Offer `req` to the best available ambulance. Caller holds _LOCK. Returns True when offered."""
+    req = lock_request(db, req.id)   # fresh state: it may have been cancelled while it waited in the drain
+    if req is None or req.status not in (RS.received, RS.matching):
+        return False
     if req.status == RS.received:
         trips.transition(req, RS.matching)
         db.commit()
@@ -134,6 +137,10 @@ def _dispatch_one(db: Session, req: EmergencyRequest, started: float, silent_if_
         if amb is not None and amb.status == AmbulanceStatus.available and amb.staffed:
             chosen = c
             break
+    # Re-check after the (slow) routing call: a cancel that landed meanwhile wins; never offer a cancelled call.
+    db.refresh(req, attribute_names=["status"])
+    if req.status not in (RS.received, RS.matching):
+        return False
     if chosen is None:
         _escalate(db, req, "no_available_ambulance", silent=silent_if_none)
         return False
@@ -218,6 +225,7 @@ def retry_escalated() -> list[int]:
             if not rank_candidates(db, r, _attempted_ids(db, r.id)):
                 continue
             trips.transition(r, RS.matching)
+            db.flush()   # _dispatch_one re-reads the request; it must see this transition
             if _dispatch_one(db, r, started, silent_if_none=True):
                 done.append(r.id)
     return done
