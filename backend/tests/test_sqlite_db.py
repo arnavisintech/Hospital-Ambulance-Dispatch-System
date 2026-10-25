@@ -93,3 +93,29 @@ def test_lifespan_sizes_the_request_thread_pool(monkeypatch):
         return anyio.to_thread.current_default_thread_limiter().total_tokens
     with TestClient(main.app) as c:
         assert c.portal.call(tokens) == 33   # read inside the app's own event loop
+
+
+def test_backup_refuses_a_missing_or_empty_source(tmp_path, monkeypatch):
+    """Final review: run from the repo root, the relative default URL pointed at a non-existent file, sqlite created an
+    empty one, and the 'backup' silently copied nothing (rotation would then delete the real backups)."""
+    import pytest
+
+    from scripts.backup_sqlite import backup
+    dest = tmp_path / "b"
+    with pytest.raises(RuntimeError, match="not found"):
+        backup(f"sqlite:///{tmp_path / 'missing.db'}", str(dest))
+    assert not (tmp_path / "missing.db").exists()                 # nothing was created in its place
+    empty = tmp_path / "empty.db"
+    sqlite3.connect(empty).close()
+    with pytest.raises(RuntimeError, match="not a HADS database"):
+        backup(f"sqlite:///{empty}", str(dest))
+
+
+def test_backup_resolves_relative_urls_against_the_backend_folder(monkeypatch):
+    """`sqlite:///./data/hads.db` means backend/data/hads.db wherever the script is started from."""
+    import pathlib
+
+    from scripts.backup_sqlite import resolve_sqlite_path
+    backend = pathlib.Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(backend.parent)                       # the repository root, as OPERATIONS.md documents
+    assert resolve_sqlite_path("sqlite:///./data/hads.db") == backend / "data" / "hads.db"
