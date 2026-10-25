@@ -14,6 +14,7 @@ export default function Account() {
   const { success, error } = useToast();
   const [pwOpen, setPwOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
+  const guest = !!user?.is_guest;
   const [password, setPassword] = useState('');
   const [delErr, setDelErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<'export' | 'delete' | null>(null);
@@ -36,7 +37,7 @@ export default function Account() {
     setBusy('delete');
     setDelErr(null);
     try {
-      await api('/auth/me', { method: 'DELETE', body: { password } });
+      await api('/auth/me', { method: 'DELETE', body: guest ? {} : { password } });
       logout();
       nav('/', { replace: true });
     } catch (e) { setDelErr(errMsg(e)); setBusy(null); }
@@ -47,7 +48,7 @@ export default function Account() {
       <div className="space-y-4 p-4">
         <Card padding="md">
           <CardHeader title={user?.name ?? 'Your account'} subtitle={user?.email ?? user?.phone ?? undefined} icon={ShieldCheck} />
-          <Button variant="secondary" icon={KeyRound} onClick={() => setPwOpen(true)} fullWidth>Change password</Button>
+          {!guest && <Button variant="secondary" icon={KeyRound} onClick={() => setPwOpen(true)} fullWidth>Change password</Button>}
         </Card>
         <Card padding="md">
           <CardHeader title="Your data" subtitle="Everything HADS holds about you: profile, requests, trips and bills." icon={Download} />
@@ -55,7 +56,7 @@ export default function Account() {
         </Card>
         <Card padding="md">
           <CardHeader title="Delete account" icon={Trash2}
-            subtitle="Removes your name, phone, email and the notes and addresses on your requests. Anonymous trip and billing records are kept as the law requires." />
+            subtitle="Removes your name, phone, email, notifications and the notes, addresses, feedback and insurance details on your requests; pickup points are blurred to about 1 km. Anonymous trip and billing records are kept as the law requires." />
           <Button variant="danger" icon={Trash2} onClick={() => setDelOpen(true)} fullWidth>Delete my account</Button>
         </Card>
       </div>
@@ -64,9 +65,11 @@ export default function Account() {
       <Modal open={delOpen} onClose={() => setDelOpen(false)} size="sm" title="Delete your account?"
         description="This cannot be undone. You will be signed out on every device."
         footer={<><Button variant="secondary" onClick={() => setDelOpen(false)}>Cancel</Button>
-          <Button variant="danger" onClick={() => void erase()} loading={busy === 'delete'} disabled={!password}>Delete permanently</Button></>}>
-        <Input label="Password" icon={Lock} type="password" autoComplete="current-password" value={password}
-          onChange={(e) => setPassword(e.target.value)} error={delErr ?? undefined} data-autofocus />
+          <Button variant="danger" onClick={() => void erase()} loading={busy === 'delete'} disabled={!guest && !password}>Delete permanently</Button></>}>
+        {guest
+          ? delErr && <p className="text-sm text-danger-fg" role="alert">{delErr}</p>
+          : <Input label="Password" icon={Lock} type="password" autoComplete="current-password" value={password}
+              onChange={(e) => setPassword(e.target.value)} error={delErr ?? undefined} data-autofocus />}
       </Modal>
     </MobileAppLayout>
   );

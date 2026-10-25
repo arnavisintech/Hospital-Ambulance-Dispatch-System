@@ -6,6 +6,8 @@ export interface User {
   phone?: string | null;
   email?: string | null;
   role: Role;
+  /** Created by the no-account SOS: never had a password it knows, so it erases without one. */
+  is_guest?: boolean;
   hospital_id?: number | null;
   ambulance_id?: number | null;
   is_active?: boolean;

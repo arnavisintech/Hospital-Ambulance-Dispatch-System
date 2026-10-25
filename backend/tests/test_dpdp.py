@@ -3,7 +3,7 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models import AuditLog, EmergencyRequest, RequestStatus, Role, TripRecord, User
-from conftest import sos
+from conftest import PATIENT, sos
 
 REG = {"name": "Kavya", "email": "kavya@hads.test", "password": "password123"}
 
@@ -69,3 +69,41 @@ def test_erase_anonymises_and_keeps_records(client, world):
         assert db.execute(select(AuditLog).where(AuditLog.action == "auth.erase")).scalar_one().entity_id == str(u["id"])
     assert client.get("/api/auth/me", headers=u["h"]).status_code == 401
     assert client.post("/api/auth/login", json={"identifier": u["email"], "password": world.password}).status_code == 401
+
+
+def test_erase_clears_every_identifying_trace(client, world):
+    """Final review: erasure also clears insurance policy details, free-text feedback and cancel reasons, removes the
+    person's notifications and coarsens exact pickup coordinates (often a home address) to about 1 km."""
+    from app.models import BillingRecord, InsuranceClaim, Notification, RequestEvent
+    u = world.user(Role.requester, phone="9840098888")
+    rid = sos(client, u["h"], caller_name="Kavya R").json()["id"]
+    _finish(rid)
+    with SessionLocal() as db:
+        trip = db.execute(select(TripRecord).where(TripRecord.request_id == rid)).scalar_one()
+        trip.summary = {**(trip.summary or {}), "feedback": {"rating": 5, "comment": "Thanks, my mother at 12 Lake St is fine"}}
+        bill = BillingRecord(trip_id=trip.id, amount=500, base_fare=500, distance_charge=0, surcharge=0,
+                             hospital_share=350, platform_share=150)
+        db.add(bill)
+        db.flush()
+        db.add(InsuranceClaim(bill_id=bill.id, insurer="Star Health", policy_number="SH-77812345", amount_claimed=500))
+        db.add(RequestEvent(request_id=rid, status="cancelled", note="Kavya called back: wrong address 12 Lake St"))
+        db.add(Notification(user_id=u["id"], type="trip", title="Your ambulance is here"))
+        db.commit()
+    assert client.request("DELETE", "/api/auth/me", json={"password": world.password}, headers=u["h"]).status_code == 200
+    with SessionLocal() as db:
+        trip = db.execute(select(TripRecord).where(TripRecord.request_id == rid)).scalar_one()
+        assert trip.summary["feedback"]["comment"] is None and trip.summary["feedback"]["rating"] == 5
+        claim = db.execute(select(InsuranceClaim)).scalar_one()
+        assert claim.policy_number == "erased" and claim.insurer == "erased"
+        assert all(e.note is None for e in db.execute(select(RequestEvent).where(RequestEvent.request_id == rid)).scalars())
+        assert db.execute(select(Notification).where(Notification.user_id == u["id"])).first() is None
+        req = db.get(EmergencyRequest, rid)
+        assert (req.lat, req.lng) == (round(PATIENT[0], 2), round(PATIENT[1], 2))
+
+
+def test_guests_can_erase_without_a_password(client):
+    import uuid
+    tok = client.post("/api/auth/guest", json={"device_id": str(uuid.uuid4())}).json()
+    assert tok["user"]["is_guest"] is True
+    h = {"Authorization": f"Bearer {tok['token']}"}
+    assert client.request("DELETE", "/api/auth/me", json={}, headers=h).status_code == 200

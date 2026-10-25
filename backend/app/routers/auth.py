@@ -8,15 +8,15 @@ from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import audit, ratelimit
 from ..db import get_db
 from ..deps import current_user
-from ..models import (BillingRecord, EmergencyRequest, RequestStatus, Role, TripRecord, User,
-                      utcnow)
+from ..models import (BillingRecord, EmergencyRequest, InsuranceClaim, Notification, RequestEvent, RequestStatus, Role,
+                      TripRecord, User, utcnow)
 from ..security import create_token, hash_password, verify_password
 from ..services import trips
 from ..services.billing import bill_out
@@ -33,7 +33,7 @@ GUEST_RETRY_WINDOW = timedelta(minutes=10)                   # device id = retry
 
 
 def user_out(db: Session, u: User) -> dict:
-    return {"id": u.id, "name": u.name, "phone": u.phone, "email": u.email, "role": u.role.value,
+    return {"id": u.id, "name": u.name, "phone": u.phone, "email": u.email, "role": u.role.value, "is_guest": bool(u.is_guest),
             "hospital_id": user_hospital_id(db, u) if u.role == Role.hospital_staff else None,
             "ambulance_id": user_ambulance_id(db, u) if u.role == Role.crew else None,
             "must_change_password": bool(u.must_change_password)}
@@ -285,8 +285,22 @@ def erase_me(body: EraseIn, user: User = Depends(current_user), db: Session = De
     reqs = db.execute(select(EmergencyRequest).where(EmergencyRequest.requester_id == user.id)).scalars().all()
     if any(r.status not in trips.TERMINAL for r in reqs):
         raise HTTPException(409, "You have a request in progress; erase your account after it is completed")
+    ids = [r.id for r in reqs]
     for r in reqs:
         r.caller_name = r.caller_phone = r.notes = r.address = None
+        r.lat, r.lng = round(r.lat, 2), round(r.lng, 2)   # ~1 km: pickups are often a home; zone statistics survive
+    if ids:
+        for ev in db.execute(select(RequestEvent).where(RequestEvent.request_id.in_(ids))).scalars():
+            ev.note = None                                  # free text (cancel reasons) can name people and places
+        for trip in db.execute(select(TripRecord).where(TripRecord.request_id.in_(ids))).scalars():
+            fb = (trip.summary or {}).get("feedback")
+            if isinstance(fb, dict) and fb.get("comment"):
+                trip.summary = {**trip.summary, "feedback": {**fb, "comment": None}}
+        for claim in db.execute(select(InsuranceClaim).join(BillingRecord, BillingRecord.id == InsuranceClaim.bill_id)
+                                .join(TripRecord, TripRecord.id == BillingRecord.trip_id)
+                                .where(TripRecord.request_id.in_(ids))).scalars():
+            claim.policy_number, claim.insurer = "erased", "erased"
+    db.execute(delete(Notification).where(Notification.user_id == user.id))
     user.name, user.email, user.phone = "Erased user", None, None
     user.is_active = False
     user.erased_at = utcnow()
