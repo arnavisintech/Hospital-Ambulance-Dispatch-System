@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Lock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { errMsg } from '../lib/api';
@@ -8,7 +9,7 @@ import { Modal } from './ui/Modal';
 
 /** Change own password. `forced` (temporary password after an admin reset) cannot be dismissed. */
 export function ChangePasswordModal({ open, onClose, forced = false }: { open: boolean; onClose: () => void; forced?: boolean }) {
-  const { changePassword } = useAuth();
+  const { changePassword, logout } = useAuth();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -41,7 +42,9 @@ export function ChangePasswordModal({ open, onClose, forced = false }: { open: b
       title={forced ? 'Set a new password' : 'Change password'}
       description={forced ? 'You signed in with a temporary password. Choose your own to continue.' : 'Other signed-in devices will be signed out.'}
       footer={<>
-        {!forced && <Button variant="secondary" onClick={onClose}>Cancel</Button>}
+        {forced
+          ? <Button variant="secondary" onClick={logout}>Sign out</Button>
+          : <Button variant="secondary" onClick={onClose}>Cancel</Button>}
         <Button onClick={() => void submit()} loading={busy}>Update password</Button>
       </>}
     >
@@ -59,8 +62,14 @@ export function ChangePasswordModal({ open, onClose, forced = false }: { open: b
   );
 }
 
-/** Mounted once: forces the password change after an admin reset or a bootstrap admin's first sign-in. */
+// Raising or tracking an SOS and running a live trip must never wait on a password form.
+const EMERGENCY_PATHS = /^\/(sos|track|crew)(\/|$)/;
+
+/** Mounted once: forces the password change after an admin reset or a bootstrap admin's first sign-in (except on the
+ *  emergency screens, where it appears once the user moves on). */
 export function ForcedPasswordChange() {
   const { user } = useAuth();
-  return <ChangePasswordModal open={!!user?.must_change_password} onClose={() => undefined} forced />;
+  const { pathname } = useLocation();
+  const open = !!user?.must_change_password && !EMERGENCY_PATHS.test(pathname);
+  return <ChangePasswordModal open={open} onClose={() => undefined} forced />;
 }
