@@ -115,6 +115,9 @@ class User(Base):
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
     consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # DPDP notice accepted
     erased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)     # DPDP erasure
+    is_guest: Mapped[bool] = mapped_column(Boolean, default=False)   # created by the no-account SOS path
+    # SHA-256 of the phone's random guest device id: a retried guest SOS gets the same account back.
+    guest_device_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
 
 
 class Hospital(Base):

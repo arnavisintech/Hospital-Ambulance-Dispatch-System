@@ -1,10 +1,11 @@
 """Authentication (STRQ2). Passwords are hashed with bcrypt and never logged or audited."""
+import hashlib
 import re
 import secrets
 import threading
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
@@ -24,7 +25,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _PHONE = re.compile(r"^\+?[0-9][0-9\- ]{6,18}$")
 LOGIN_FAILURES = ratelimit.limiter("login_failures", 5, 900)  # 5 wrong passwords / 15 min per IP + identifier
-_signup = ratelimit.limit("signup", 10, 3600)                # register + guest: 10 / hour per IP
+_signup = ratelimit.limit("signup", 10, 3600)                # account registration: 10 / hour per IP
+_guest_flood_guard = ratelimit.limit("guest", 600, 3600)     # guest SOS: flood guard only (CGNAT shares IPs)
 
 
 def user_out(db: Session, u: User) -> dict:
@@ -80,6 +82,8 @@ class RegisterIn(BaseModel):
 
 class GuestIn(BaseModel):
     name: str | None = Field(default=None, max_length=120)
+    # Random id the app keeps on the phone (crypto UUID); makes guest creation idempotent across retries.
+    device_id: str | None = Field(default=None, min_length=32, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
     phone: str | None = None
 
     @field_validator("phone")
@@ -121,17 +125,32 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
     return _token_response(db, u)
 
 
-@router.post("/guest", status_code=201, dependencies=[Depends(_signup)])
-def guest(body: GuestIn | None = None, db: Session = Depends(get_db)):
-    """NFR5: 2-tap SOS. Creates a throw-away requester with a random password."""
+@router.post("/guest", status_code=201, dependencies=[Depends(_guest_flood_guard)])
+def guest(response: Response, body: GuestIn | None = None, db: Session = Depends(get_db)):
+    """NFR5: 2-tap SOS. Creates a throw-away requester with a random password, once per device: a retry with the
+    same device id returns the same account (200). Only a flood guard limits it per IP, because mobile carriers put
+    many phones behind one address and this is the emergency path."""
     body = body or GuestIn()
+    device_hash = hashlib.sha256(body.device_id.encode()).hexdigest() if body.device_id else None
+    if device_hash:
+        known = db.execute(select(User).where(User.guest_device_hash == device_hash, User.erased_at.is_(None),
+                                              User.is_active.is_(True))).scalar_one_or_none()
+        if known is not None:
+            response.status_code = 200
+            return _token_response(db, known)
     phone = body.phone
     if phone and db.execute(select(User).where(User.phone == phone)).first():
         phone = None  # never attach to / take over an existing account; SOS must still succeed
     u = User(name=(body.name or "Guest").strip() or "Guest", phone=phone,
-             email=None, password_hash=hash_password(secrets.token_urlsafe(24)), role=Role.requester)
+             email=None, password_hash=hash_password(secrets.token_urlsafe(24)), role=Role.requester,
+             is_guest=True, guest_device_hash=device_hash)
     db.add(u)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:   # the same device's retry won the race: return that account
+        db.rollback()
+        response.status_code = 200
+        return _token_response(db, db.execute(select(User).where(User.guest_device_hash == device_hash)).scalar_one())
     audit.log(db, "auth.guest", "user", u.id, u.id, {})
     db.commit()
     return _token_response(db, u)

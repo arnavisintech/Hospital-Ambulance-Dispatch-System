@@ -82,5 +82,21 @@ def test_spoofed_forwarded_for_cannot_fake_the_client_ip():
     trusted = _TrustedHosts(default)
     # attacker sends "X-Forwarded-For: 6.6.6.6"; a proxy that appended would yield "6.6.6.6, <real>"
     assert trusted.get_trusted_client_host("6.6.6.6, 203.0.113.9") == "203.0.113.9"
-    conf = (root / "frontend/nginx/app.conf").read_text(encoding="utf-8")
+    conf = (root / "frontend/nginx/api-proxy.conf").read_text(encoding="utf-8")
     assert "proxy_add_x_forwarded_for" not in conf and "X-Forwarded-For $remote_addr" in conf
+
+
+def test_nginx_never_caps_websockets_or_emergency_intake_per_ip():
+    """Final review: carrier-grade NAT and call-centre NAT put many users behind one IP. Long-lived tracking sockets
+    must not count against a per-IP cap, and SOS / IVR / guest intake must never be capped per IP."""
+    import pathlib
+    import re
+    root = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "nginx"
+    conf = (root / "app.conf").read_text(encoding="utf-8")
+    blocks = dict(re.findall(r"location\s+(?:(?:\^~|=)\s+)?(\S+)\s*\{(.*?)\n\}", conf, re.S))
+    for loc in ("/api/ws", "/api/requests", "/api/auth/guest"):
+        assert loc in blocks, f"{loc} needs its own location"
+        assert "limit_conn" not in blocks[loc], loc
+        assert "api-proxy.conf" in blocks[loc], loc
+    m = re.search(r"limit_conn\s+hads_api_conn\s+(\d+)", blocks["/api/"])
+    assert m and int(m.group(1)) >= 200

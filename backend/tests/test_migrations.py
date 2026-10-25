@@ -130,8 +130,11 @@ def test_0002_keeps_existing_trips_and_backfills_their_station(url):
             conn.execute(text("INSERT INTO billing_records (id, trip_id, base_fare, distance_charge, surcharge, amount, "
                               "hospital_share, platform_share, payment_status, created_at) "
                               "VALUES (9, 5, 500, 0, 0, 500, 350, 150, 'pending', '2026-10-01 11:00:00')"))
+            conn.execute(text("INSERT INTO users (id, name, password_hash, role, is_active, created_at, token_version, "
+                              "must_change_password) VALUES (1, 'Old user', 'x', 'requester', 1, '2026-10-01 09:00:00', 0, 0)"))
         command.upgrade(cfg, "head")
         with eng.connect() as conn:
+            assert conn.execute(text("SELECT is_guest FROM users WHERE id = 1")).scalar() in (0, False)   # 0003 default
             assert conn.execute(text("SELECT station_id FROM trip_records WHERE id = 5")).scalar() == 7
             assert conn.execute(text("SELECT count(*) FROM billing_records WHERE trip_id = 5")).scalar() == 1
         command.downgrade(cfg, "0001")

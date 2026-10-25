@@ -55,11 +55,20 @@ def test_successful_login_resets_failure_counter(client, world):
 
 
 def test_signup_limited_per_ip(client):
+    """Account registration stays limited per IP; the guest SOS path has only a separate flood guard."""
     for i in range(10):
-        assert client.post("/api/auth/guest", json={}).status_code == 201
-    assert client.post("/api/auth/guest", json={}).status_code == 429
-    r = client.post("/api/auth/register", json={"consent": True, "name": "X", "email": "x@hads.test", "password": "password123"})
+        r = client.post("/api/auth/register", json={"consent": True, "name": f"X{i}", "email": f"x{i}@hads.test",
+                                                    "password": "password123"})
+        assert r.status_code == 201
+    r = client.post("/api/auth/register", json={"consent": True, "name": "Y", "email": "y@hads.test", "password": "password123"})
     assert r.status_code == 429
+    assert client.post("/api/auth/guest", json={}).status_code == 201       # SOS is not charged against sign-ups
+
+
+def test_guest_flood_guard_exists(client, monkeypatch):
+    from app import ratelimit
+    monkeypatch.setattr(ratelimit.limiter("guest", 600, 3600), "limit", 3)
+    assert [client.post("/api/auth/guest", json={}).status_code for _ in range(4)] == [201, 201, 201, 429]
 
 
 def test_controller_ivr_burst_never_limited(client, world):
@@ -81,3 +90,28 @@ def test_requester_sos_flood_is_limited(client, world):
     u = world.user(Role.requester)
     codes = [sos(client, u["h"]).status_code for _ in range(21)]
     assert codes[:20] == [201] * 20 and codes[20] == 429
+
+
+def test_guest_sos_is_not_capped_like_signups_behind_shared_ips(client):
+    """Final review: mobile carriers put thousands of phones behind one IP (CGNAT). Thirty strangers raising a guest
+    SOS from the same address in an hour must all get through (only a flood guard applies)."""
+    import uuid
+    codes = [client.post("/api/auth/guest", json={"device_id": str(uuid.uuid4())}).status_code for _ in range(30)]
+    assert codes == [201] * 30
+
+
+def test_guest_creation_is_idempotent_per_device(client):
+    """A lost response retried from the same phone returns the same guest instead of creating (and counting) another."""
+    import uuid
+
+    from app.db import SessionLocal
+    from app.models import User
+    device = str(uuid.uuid4())
+    a = client.post("/api/auth/guest", json={"device_id": device})
+    b = client.post("/api/auth/guest", json={"device_id": device})
+    assert a.status_code == 201 and b.status_code == 200
+    assert a.json()["user"]["id"] == b.json()["user"]["id"]
+    with SessionLocal() as db:
+        u = db.get(User, a.json()["user"]["id"])
+        assert u.is_guest and u.guest_device_hash and device not in u.guest_device_hash   # stored hashed
+    assert client.post("/api/auth/guest", json={"device_id": "short"}).status_code == 422  # must be a real random id

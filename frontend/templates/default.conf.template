@@ -10,8 +10,7 @@ map $http_upgrade $connection_upgrade {
 # otherwise the frontend falls back to OpenStreetMap tiles on its own.
 proxy_cache_path /var/cache/nginx/tiles levels=1:2 keys_zone=tiles:20m max_size=1g inactive=30d use_temp_path=off;
 
-# At most 50 concurrent API connections (requests + websockets) per client address: one source cannot monopolise
-# the backend's admission slots or body-buffer budget. Over the limit nginx answers 503.
+# Per-client-address cap on concurrent API connections (see nginx/app.conf: websockets and emergency intake are exempt).
 limit_conn_zone $binary_remote_addr zone=hads_api_conn:10m;
 
 map "${STADIA_API_KEY}" $stadia_args {

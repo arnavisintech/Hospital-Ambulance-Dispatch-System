@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, get, getToken, onUnauthorized, post, setToken } from '../lib/api';
+import { guestDeviceId } from '../lib/device';
 import type { TokenResponse, User } from '../lib/types';
 
 interface AuthCtx {
@@ -51,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login: async (identifier, password) =>
       accept(await api<TokenResponse>('/auth/login', { method: 'POST', body: { identifier, password }, auth: false })),
     register: async (b) => accept(await post<TokenResponse>('/auth/register', b)),
-    guest: async (b = {}) => accept(await post<TokenResponse>('/auth/guest', b)),
+    guest: async (b = {}) => accept(await post<TokenResponse>('/auth/guest', { ...b, device_id: guestDeviceId() })),
     changePassword: async (current, next) =>
       accept(await post<TokenResponse>('/auth/password', { current_password: current, new_password: next })),
   }), [user, loading, logout]);
