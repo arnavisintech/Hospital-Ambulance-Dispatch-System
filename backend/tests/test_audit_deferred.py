@@ -44,3 +44,17 @@ def test_rolled_back_audit_entries_are_discarded(client):
         db.commit()
         assert db.scalar(select(func.count(AuditLog.id))) == before + 1
         assert db.execute(select(AuditLog.action).order_by(AuditLog.id.desc()).limit(1)).scalar() == "t.kept"
+
+
+def test_a_failed_savepoint_keeps_the_outer_transactions_audit_entries(client):
+    """Security review: a rolled-back nested savepoint must not discard audit entries of the enclosing transaction."""
+    with SessionLocal() as db:
+        before = db.scalar(select(func.count(AuditLog.id)))
+        audit.log(db, "t.outer", "thing", 1, None, {})
+        sp = db.begin_nested()
+        audit.log(db, "t.inner", "thing", 2, None, {})
+        sp.rollback()
+        db.commit()
+        actions = db.execute(select(AuditLog.action).order_by(AuditLog.id.desc()).limit(1)).scalars().all()
+        assert db.scalar(select(func.count(AuditLog.id))) == before + 1
+        assert actions == ["t.outer"]
