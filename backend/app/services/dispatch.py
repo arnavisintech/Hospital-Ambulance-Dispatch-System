@@ -149,9 +149,12 @@ def _dispatch_one(db: Session, req: EmergencyRequest, started: float, silent_if_
         if amb is not None and amb.status == AmbulanceStatus.available and amb.staffed:
             chosen = c
             break
-    # Re-check after the (slow) routing call: a cancel that landed meanwhile wins; never offer a cancelled call.
-    db.refresh(req, attribute_names=["status"])
-    if req.status not in (RS.received, RS.matching):
+    # Re-lock after the (slow) routing call: the 'matching' commit above released the row, and a cancel may hold it
+    # now while it waits for _LOCK. Never wait on it (deadlock): if busy, let go and leave it to the next sweep.
+    # A cancel that landed meanwhile wins; never offer a cancelled call.
+    req = lock_request(db, req.id, skip_locked=True)
+    if req is None or req.status not in (RS.received, RS.matching):
+        db.rollback()   # release any ambulance lock taken above
         return False
     if chosen is None:
         _escalate(db, req, "no_available_ambulance", silent=silent_if_none)
@@ -234,7 +237,9 @@ def retry_escalated() -> list[int]:
                           .order_by(EmergencyRequest.severity.desc(), EmergencyRequest.created_at)
                           .execution_options(populate_existing=True)).scalars().all()
         for r in rows:
-            if not rank_candidates(db, r, _attempted_ids(db, r.id)):
+            r = lock_request(db, r.id, skip_locked=True)   # holding _LOCK: never wait on a row (a cancel may hold it)
+            if r is None or r.status != RS.awaiting_manual or not rank_candidates(db, r, _attempted_ids(db, r.id)):
+                db.rollback()   # busy, already handled, or still nothing free: release the row, retry next tick
                 continue
             trips.transition(r, RS.matching)
             db.flush()   # _dispatch_one re-reads the request; it must see this transition

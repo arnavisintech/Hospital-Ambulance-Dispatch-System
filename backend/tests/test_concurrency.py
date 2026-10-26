@@ -183,3 +183,73 @@ def test_dispatcher_never_waits_on_a_row_lock_while_holding_the_dispatch_lock(wo
     assert under_lock and all(skip for _, _, skip in under_lock)
     q = dispatch._request_lock_query(1, skip_locked=True)
     assert "FOR UPDATE SKIP LOCKED" in str(q.compile(dialect=postgresql.dialect()))
+
+
+def _held_row_lock(request_id: int):
+    """Another connection row-locks a request, as the cancel route does before it waits for _LOCK."""
+    from sqlalchemy import text
+
+    from app.db import engine
+    conn = engine.connect()
+    tx = conn.begin()
+    conn.execute(text("select id from emergency_requests where id = :i for update"), {"i": request_id})
+    return conn, tx
+
+
+def _returns_within(fn, seconds: float = 5.0) -> bool:
+    import threading
+    t = threading.Thread(target=fn, daemon=True)
+    t.start()
+    t.join(seconds)
+    return not t.is_alive()
+
+
+def _pg_only():
+    import pytest
+    if SessionLocal().bind.dialect.name != "postgresql":
+        pytest.skip("row-lock waits only exist on PostgreSQL")
+
+
+def test_retry_escalated_never_waits_on_a_locked_request(world):
+    """PostgreSQL load test: the watcher's retry_escalated held _LOCK and updated an escalated request it had not
+    locked; a cancel holding that row and waiting for _LOCK deadlocked it, and dispatch stopped city-wide."""
+    _pg_only()
+    _fleet(world, 2)
+    with SessionLocal() as db:
+        r = EmergencyRequest(lat=PATIENT[0], lng=PATIENT[1], severity=3, status=RequestStatus.awaiting_manual)
+        db.add(r)
+        db.commit()
+        rid = r.id
+    conn, tx = _held_row_lock(rid)
+    try:
+        assert _returns_within(dispatch.retry_escalated), "retry_escalated blocked on a row lock while holding _LOCK"
+    finally:
+        tx.rollback()
+        conn.close()
+
+
+def test_dispatch_never_waits_when_a_cancel_locks_the_request_mid_dispatch(world, monkeypatch):
+    """_dispatch_one committed the 'matching' step, releasing its row lock, then updated the request again to offer
+    it; a cancel that locked the row during the routing call deadlocked the dispatcher the same way."""
+    _pg_only()
+    _fleet(world, 2)
+    with SessionLocal() as db:
+        r = EmergencyRequest(lat=PATIENT[0], lng=PATIENT[1], severity=3)
+        db.add(r)
+        db.commit()
+        rid = r.id
+    held = {}
+    real_rank = dispatch.rank_candidates
+
+    def rank_then_cancel_arrives(db, req, *a, **kw):
+        out = real_rank(db, req, *a, **kw)
+        if not held:
+            held["lock"] = _held_row_lock(rid)   # the cancel route locks the row during routing
+        return out
+    monkeypatch.setattr(dispatch, "rank_candidates", rank_then_cancel_arrives)
+    try:
+        assert _returns_within(dispatch.run_dispatch), "dispatch blocked on a row lock while holding _LOCK"
+    finally:
+        if held:
+            held["lock"][1].rollback()
+            held["lock"][0].close()
