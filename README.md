@@ -63,8 +63,15 @@ then routing uses straight-line estimates.
 .\scripts\run-local.ps1 -NoDemo  # empty database
 ```
 
-The demo accounts are listed on the sign-in page. Their password is published, so **never** use demo mode for real
-patients (production refuses to start in demo mode).
+For real road routes without the full Docker stack, start only the router first (it reuses the prepared Chennai
+road graph): `docker compose --env-file demo.env -f docker-compose.yml -f docker-compose.dev.yml up -d osrm`.
+`run-local.ps1` uses it when it answers; otherwise routes are straight-line estimates, drawn dashed and labelled as
+approximate.
+
+The demo accounts are listed on the sign-in page. Dispatch sends each call to whichever hospital and ambulance suit it
+best, so the Hospital and Crew cards have a dropdown: pick the hospital or ambulance shown on the trip to receive the
+patient or drive the trip. Their password is published, so **never** use demo mode for real patients (production
+refuses to start in demo mode).
 
 ## Production
 

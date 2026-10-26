@@ -189,7 +189,8 @@ def remaining(leg: Leg, pos: Point) -> dict:
     poly = [[round(pos[0], 6), round(pos[1], 6)]] + [[round(p[0], 6), round(p[1], 6)] for p in leg.poly[seg + 1:]]
     eta = int(round(leg.duration_s * frac))
     return {"phase": leg.phase, "polyline": poly, "distance_km": round(leg.distance_km * frac, 2),
-            "eta_seconds": max(0, eta) if frac > 0 else 0}
+            "eta_seconds": max(0, eta) if frac > 0 else 0,
+            "provider": leg.provider}   # "haversine" = straight-line estimate: the app must not present it as directions
 
 
 def publish_route(req: EmergencyRequest, snap: dict) -> None:

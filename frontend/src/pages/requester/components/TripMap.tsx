@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AmbulanceMarker, FitBounds, HospitalMarker, MapCanvas, PatientPin, RouteLine } from '../../../components/map';
+import { approximateRoute } from '../../../lib/geo';
 import type { LatLng, RoutePhase } from '../../../lib/types';
 
 export interface TripMapProps {
@@ -8,7 +9,7 @@ export interface TripMapProps {
   /** Hide the patient pin once they are on board. */
   showPatient?: boolean;
   ambulance?: { position: LatLng; heading?: number | null; status?: string; title?: string } | null;
-  route?: { phase: RoutePhase | null; polyline: LatLng[] } | null;
+  route?: { phase: RoutePhase | null; polyline: LatLng[]; provider?: string | null } | null;
   hospital?: { name: string; position: LatLng; beds?: number | null } | null;
   /** ETA chip on the ambulance (seconds). */
   eta?: number | null;
@@ -44,7 +45,7 @@ export function TripMap({ patient, patientLabel = 'Pickup', showPatient = true, 
   return (
     <MapCanvas center={center} zoom={14} onRecenter={() => setRecenterN((n) => n + 1)} recenterLabel="Show the whole trip" ariaLabel={ariaLabel}>
       {route && route.polyline.length > 1 && (
-        <RouteLine positions={route.polyline} phase={route.phase ?? phase} progressAt={ambulance?.position} />
+        <RouteLine positions={route.polyline} phase={route.phase ?? phase} progressAt={ambulance?.position} dashed={approximateRoute(route)} />
       )}
       {hospital && <HospitalMarker position={hospital.position} name={hospital.name} beds={hospital.beds} selected />}
       {patient && showPatient && <PatientPin position={patient} label={patientLabel} />}

@@ -148,3 +148,8 @@ export function nextTripStatus(current: string): 'en_route' | 'on_scene' | 'tran
   if (i < 0 || i >= TRIP_FLOW.length - 1) return null;
   return TRIP_FLOW[i + 1] as 'en_route' | 'on_scene' | 'transporting' | 'arrived';
 }
+
+/** A route the server could not match to roads (router unavailable): a straight-line estimate, not directions. */
+export function approximateRoute(route?: { provider?: string | null } | null): boolean {
+  return route?.provider === 'haversine';
+}

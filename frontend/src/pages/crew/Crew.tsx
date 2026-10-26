@@ -14,7 +14,7 @@ import { useSocket } from '../../hooks/useSocket';
 import { get, post } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { fmtDistance, fmtEta, fmtPhone } from '../../lib/format';
-import { densify } from '../../lib/geo';
+import { approximateRoute, densify } from '../../lib/geo';
 import type { CrewMe, LatLng, RequestOut, RouteOut } from '../../lib/types';
 import { NavBanner } from './NavBanner';
 import { OfferModal } from './OfferModal';
@@ -314,6 +314,7 @@ function Navigate({ trip, route, myPos, isDesktop, onAdvance, devTools }: {
   const patient: LatLng = [trip.lat, trip.lng];
   const dest: LatLng | null = toHospital ? (hosp ? [hosp.lat, hosp.lng] : null) : patient;
   const poly = route?.polyline ?? [];
+  const approx = approximateRoute(route);   // straight-line estimate: dashed line, no turn instructions
   const next = trip.status === 'on_scene' || trip.status === 'arrived' ? null : nextManeuver(route?.steps, poly, myPos);
   const then = next && route ? route.steps.slice(next.index + 1).length ? nextManeuver(route.steps.slice(next.index + 1), poly, [route.steps[next.index].lat, route.steps[next.index].lng]) : null : null;
   const [fitKey, setFitKey] = useState(0);
@@ -328,14 +329,14 @@ function Navigate({ trip, route, myPos, isDesktop, onAdvance, devTools }: {
   const map = (
     <div className="relative h-full w-full">
       <MapCanvas center={myPos ?? patient} zoom={15} onRecenter={() => setFitKey((k) => k + 1)} recenterLabel="Show route" ariaLabel="Navigation map">
-        {poly.length > 1 && <RouteLine positions={poly} phase={route?.phase ?? (toHospital ? 'to_hospital' : 'to_patient')} progressAt={myPos} />}
+        {poly.length > 1 && <RouteLine positions={poly} phase={route?.phase ?? (toHospital ? 'to_hospital' : 'to_patient')} progressAt={myPos} dashed={approx} />}
         {hosp && <HospitalMarker position={[hosp.lat, hosp.lng]} name={hosp.name} selected={toHospital} />}
         {!toHospital && <PatientPin position={patient} label="Patient" />}
         {myPos && <AmbulanceMarker position={myPos} status={trip.status === 'transporting' ? 'transporting' : 'en_route'} route={poly} title="You" zIndexOffset={800} />}
         <FitBounds points={[myPos, dest]} refitKey={`${fitKey}-${trip.status}`} once={false} maxZoom={16} />
       </MapCanvas>
-      {next && (
-        <NavBanner next={next} then={then} className={cn('absolute z-sticky', isDesktop ? 'left-4 right-4 top-4 max-w-md' : 'inset-x-3 top-[calc(var(--safe-top)+66px)]')} />
+      {(next || (approx && route && !(trip.status === 'on_scene' || trip.status === 'arrived'))) && (
+        <NavBanner next={next} then={then} approximate={approx && route ? { distanceKm: route.distance_km } : null} className={cn('absolute z-sticky', isDesktop ? 'left-4 right-4 top-4 max-w-md' : 'inset-x-3 top-[calc(var(--safe-top)+66px)]')} />
       )}
     </div>
   );

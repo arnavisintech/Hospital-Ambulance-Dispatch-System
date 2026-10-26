@@ -34,7 +34,18 @@ if (-not $SkipBuild) {
 
 $env:APP_ENV = $(if ($NoDemo) { 'development' } else { 'demo' })
 $env:DATABASE_URL = 'sqlite:///./data/hads.db'
-$env:ROUTING_PROVIDER = 'haversine'
+# Real road routes need OSRM (the Chennai road graph). Use it when it answers, otherwise straight-line estimates,
+# which the app draws dashed and labels as approximate. Start it with:
+#   docker compose --env-file demo.env -f docker-compose.yml -f docker-compose.dev.yml up -d osrm
+$env:OSRM_URL = $(if ($env:OSRM_URL) { $env:OSRM_URL } else { 'http://127.0.0.1:5000' })
+$osrmUp = $false
+try {
+  $probe = Invoke-RestMethod "$($env:OSRM_URL)/route/v1/driving/80.2707,13.0827;80.2496,13.0604?overview=false" -TimeoutSec 3
+  $osrmUp = $probe.code -eq 'Ok'
+} catch { }
+$env:ROUTING_PROVIDER = $(if ($osrmUp) { 'osrm' } else { 'haversine' })
+if ($osrmUp) { Write-Host "Road routing: OSRM at $($env:OSRM_URL)" }
+else { Write-Host "Road routing: OSRM not reachable at $($env:OSRM_URL); using straight-line estimates (see the comment in this script to start it)" -ForegroundColor Yellow }
 $env:GEO_PROVIDER = 'offline'
 $env:DEMO_AUTOPILOT = $(if ($NoDemo) { 'false' } else { 'true' })
 

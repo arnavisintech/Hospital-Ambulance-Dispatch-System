@@ -302,3 +302,14 @@ def test_capacity_staleness_reads_platform_setting(client, world):
         db.add(PlatformSetting(key="capacity_stale_min", value={"value": 30}))
         db.commit()
         assert capacity.is_stale(hosp) is False
+
+
+def test_live_route_says_whether_it_follows_roads(client, scene):
+    """Demo walk-through: without the road router the route is a straight line, but it was drawn and narrated
+    ("Continue straight") like real directions. The live route now carries its provider so the app can tell."""
+    from app.services import legs
+    from app.services.legs import Leg
+    leg = Leg(request_id=1, phase="to_patient", dest=(13.08, 80.27), poly=[(13.07, 80.26), (13.08, 80.27)],
+              cum_m=[0.0, 1500.0], distance_km=1.5, duration_s=180, steps=[], provider="haversine")
+    snap = legs.remaining(leg, (13.07, 80.26))
+    assert snap["provider"] == "haversine"

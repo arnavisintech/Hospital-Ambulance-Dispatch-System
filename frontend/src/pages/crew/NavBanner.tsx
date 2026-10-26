@@ -1,12 +1,30 @@
 import { createElement } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { Compass } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { fmtMeters } from '../../lib/format';
 import { maneuverIcon, maneuverText, type NextManeuver } from './nav';
 
-/** Turn-by-turn banner (top of the navigation map): big arrow, distance to the maneuver, street name. */
-export function NavBanner({ next, then, className }: { next: NextManeuver | null; then?: NextManeuver | null; className?: string }) {
+/** Turn-by-turn banner (top of the navigation map): big arrow, distance to the maneuver, street name.
+ *  `approximate`: the route is a straight-line estimate (road router unavailable), so no turn instructions are shown. */
+export function NavBanner({ next, then, className, approximate }: {
+  next: NextManeuver | null; then?: NextManeuver | null; className?: string; approximate?: { distanceKm: number } | null;
+}) {
   const reduce = useReducedMotion();
+  if (approximate) {
+    return (
+      <div className={cn('pointer-events-auto', className)} role="status" aria-live="polite" aria-atomic="true">
+        <div className="flex items-center gap-3 rounded-xl bg-ink-900 px-4 py-3 text-white shadow-raised">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-white/10" aria-hidden><Compass size={30} strokeWidth={2.2} /></span>
+          <div className="min-w-0 flex-1">
+            <p className="text-2xl font-extrabold leading-none tabular-nums">{approximate.distanceKm.toFixed(1)} km</p>
+            <p className="mt-1 text-base font-semibold text-white/90">Road directions unavailable</p>
+            <p className="text-sm text-white/70">Head for the destination on the map, or open it in your maps app</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!next) return null;
   const verb = maneuverText(next.step.maneuver);
   // v1 steps have no maneuver: fall back to the plain instruction text.

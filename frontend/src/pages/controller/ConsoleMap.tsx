@@ -6,6 +6,7 @@ import {
   AmbulanceMarker, FitBounds, HospitalMarker, MapCanvas, RiskHeatLayer, RouteLine, StationMarker, Tooltip, useMap,
 } from '../../components/map';
 import { demographicsLine, fmtAge } from '../../lib/format';
+import { approximateRoute } from '../../lib/geo';
 import { ambulanceStatusMeta, incidentMeta, severityMeta, toneClasses } from '../../lib/status';
 import type { AmbulanceBrief, HospitalBrief, LatLng, RequestOut, RiskZone } from '../../lib/types';
 import { ROUTED, type BoardStation, type LiveBoard } from './board';
@@ -164,7 +165,7 @@ export function ConsoleMap({ live, selectedId, onSelect, layers, riskZones, move
       {layers.routes && board.requests.map((r) => {
         const route = routes[r.id];
         if (!route || !ROUTED.has(r.status) || route.polyline.length < 2) return null;
-        return <RouteLine key={`rt${r.id}`} positions={route.polyline} phase={route.phase ?? (r.status === 'transporting' ? 'to_hospital' : 'to_patient')} weight={r.id === selectedId ? 5 : 4} />;
+        return <RouteLine key={`rt${r.id}`} positions={route.polyline} phase={route.phase ?? (r.status === 'transporting' ? 'to_hospital' : 'to_patient')} weight={r.id === selectedId ? 5 : 4} dashed={approximateRoute(route)} />;
       })}
 
       {layers.hospitals && board.hospitals.map((h) => (
