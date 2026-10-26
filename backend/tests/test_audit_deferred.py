@@ -58,3 +58,25 @@ def test_a_failed_savepoint_keeps_the_outer_transactions_audit_entries(client):
         actions = db.execute(select(AuditLog.action).order_by(AuditLog.id.desc()).limit(1)).scalars().all()
         assert db.scalar(select(func.count(AuditLog.id))) == before + 1
         assert actions == ["t.outer"]
+
+
+def test_entry_logged_first_in_a_fresh_session_is_discarded_by_rollback(client):
+    """Security review: audit.log as the first call of a session (no transaction begun yet) must still be owned by a
+    transaction, or a rollback would leave it pending and a later commit would record an action that never happened."""
+    with SessionLocal() as db:
+        before = db.scalar(select(func.count(AuditLog.id)))
+    with SessionLocal() as db:
+        audit.log(db, "t.ghost", "thing", 1, None, {})
+        db.rollback()
+        audit.log(db, "t.real", "thing", 2, None, {})
+        db.commit()
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count(AuditLog.id))) == before + 1
+        assert db.execute(select(AuditLog.action).order_by(AuditLog.id.desc()).limit(1)).scalar() == "t.real"
+
+
+def test_closing_without_commit_leaves_nothing_pending(client):
+    db = SessionLocal()
+    audit.log(db, "t.abandoned", "thing", 1, None, {})
+    db.close()
+    assert not db.info.get("hads_pending_audit")

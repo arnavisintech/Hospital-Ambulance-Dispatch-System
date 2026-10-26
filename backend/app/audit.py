@@ -21,7 +21,9 @@ def log(db: Session, action: str, entity: str, entity_id=None, user_id: int | No
     """Record an audit entry in the current transaction (caller commits). The entry is appended to the hash chain at
     commit (see _append_pending), so the chain-wide lock is held only for the append and the commit itself, never
     across the rest of the caller's work: holding it mid-transaction made concurrent intakes and dispatch convoy."""
-    tx = db.get_nested_transaction() or db.get_transaction()   # the innermost transaction owns the entry
+    # The innermost transaction owns the entry. A fresh session has not begun one yet (autobegin is lazy): begin it,
+    # so the entry is never ownerless and a rollback always discards it.
+    tx = db.get_nested_transaction() or db.get_transaction() or db.begin()
     db.info.setdefault(_PENDING, []).append(
         (tx, (utcnow(), user_id, action, entity, str(entity_id) if entity_id is not None else None, details or {})))
 
@@ -60,6 +62,14 @@ def _discard_pending(db: Session, previous_transaction) -> None:
     pending = db.info.get(_PENDING)
     if pending:
         db.info[_PENDING] = [e for e in pending if not _within(e[0], previous_transaction)]
+
+
+@event.listens_for(Session, "after_transaction_end")
+def _clear_on_end(db: Session, transaction) -> None:
+    """Backstop: when the outermost transaction ends without its entries being appended (rollback, close), drop
+    them; nothing pending may outlive the transaction that logged it."""
+    if transaction.parent is None and db.info.get(_PENDING):
+        db.info[_PENDING] = [e for e in db.info[_PENDING] if not _within(e[0], transaction)]
 
 
 def drop_immutability_triggers(db: Session) -> None:
