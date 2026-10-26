@@ -10,9 +10,12 @@ TARGET=""
 if [ "${2:-}" = "--target-time" ]; then TARGET=${3:?--target-time needs a value}; fi
 COMPOSE=${COMPOSE:-docker compose}
 START=$(date +%s)
+# The backend is stopped and restarted around the restore when this project has one (the restore drill has none).
+HAS_BACKEND=$($COMPOSE ps -a -q backend 2>/dev/null)
 
 echo "restore: stopping backend and database"
-$COMPOSE stop backend db
+if [ -n "$HAS_BACKEND" ]; then $COMPOSE stop backend; fi
+$COMPOSE stop db
 echo "restore: unpacking base backup $ID"
 $COMPOSE run --rm --no-deps --user root --entrypoint restore-inside.sh db "$ID" "$TARGET"
 echo "restore: starting database (WAL replay)"
@@ -23,6 +26,8 @@ until [ "$($COMPOSE exec -T db psql -U hads -d hads -tAc 'select pg_is_in_recove
   [ $i -le 600 ] || { echo "restore: database did not finish recovery in 10 minutes" >&2; exit 1; }
   sleep 1
 done
-echo "restore: starting backend"
-$COMPOSE start backend
+if [ -n "$HAS_BACKEND" ]; then
+  echo "restore: starting backend"
+  $COMPOSE start backend
+fi
 echo "restore: done in $(( $(date +%s) - START )) s"

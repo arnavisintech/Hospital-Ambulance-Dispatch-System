@@ -5,9 +5,11 @@ set -eu
 KEEP=${BACKUP_KEEP:-7}
 ID=$(date -u +%Y%m%dT%H%M%SZ)
 DIR=/backups/$ID
-mkdir -p "$DIR"
-touch "$DIR/STARTED"          # WAL archived before this moment is not needed by this backup
+# WAL archived before this moment is not needed by this backup. The marker is made outside $DIR (pg_basebackup
+# refuses a non-empty target) and moved in afterwards; mv keeps its time, which the WAL prune below compares against.
+touch "/backups/.started-$ID"
 pg_basebackup -h "${PGHOST:-db}" -U "${PGUSER:-hads}" -D "$DIR" -Ft -z -X stream -c fast --label "hads-$ID"
+mv "/backups/.started-$ID" "$DIR/STARTED"
 touch "$DIR/BACKUP_OK"
 echo "$ID" > /backups/latest.tmp && mv /backups/latest.tmp /backups/latest
 # prune old backups (only complete ones count towards KEEP)
