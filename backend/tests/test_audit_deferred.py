@@ -80,3 +80,41 @@ def test_closing_without_commit_leaves_nothing_pending(client):
     audit.log(db, "t.abandoned", "thing", 1, None, {})
     db.close()
     assert not db.info.get("hads_pending_audit")
+
+
+def test_commit_never_waits_on_a_row_while_holding_the_audit_lock(client, world):
+    """PostgreSQL load test: before_commit took the chain lock and only then flushed the transaction's own updates,
+    so a cancel holding the lock waited on a hospital row that another committer held while waiting for the lock:
+    PostgreSQL aborted the cancel (DeadlockDetected, 500). Pending changes must be flushed before the lock."""
+    import threading
+
+    import pytest
+
+    from app.models import Hospital
+    if SessionLocal().bind.dialect.name != "postgresql":
+        pytest.skip("row and advisory lock ordering only exist on PostgreSQL")
+    hid = world.hospital(icu=5)
+    a, b = SessionLocal(), SessionLocal()
+    errors = []
+    try:
+        a.get(Hospital, hid).available_icu = 4      # A updates the hospital row first (row lock held)...
+        a.flush()
+
+        def b_commits():
+            try:
+                audit.log(b, "t.b", "thing", 2, None, {})
+                b.get(Hospital, hid).available_icu = 3
+                b.commit()                           # ...B must wait for that row WITHOUT holding the chain lock
+            except Exception as e:  # noqa: BLE001
+                errors.append(e)
+                b.rollback()
+        t = threading.Thread(target=b_commits)
+        t.start()
+        t.join(1.5)                                  # let B reach its commit and block on A's row
+        audit.log(a, "t.a", "thing", 1, None, {})
+        a.commit()                                   # A now needs the chain lock: with the bug, B holds it -> deadlock
+        t.join(10)
+        assert not t.is_alive() and errors == [], errors
+    finally:
+        a.close()
+        b.close()

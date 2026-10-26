@@ -33,6 +33,9 @@ def _append_pending(db: Session) -> None:
     pending = db.info.pop(_PENDING, None)
     if not pending:
         return
+    # Flush the transaction's own changes first, so the chain lock is the LAST lock it takes: a holder of the lock then
+    # never waits on a row another committer holds while waiting for the lock (PostgreSQL deadlock, load test).
+    db.flush()
     if db.get_bind().dialect.name == "postgresql":  # serialise chain appends across workers until commit
         db.execute(text("select pg_advisory_xact_lock(7242001)"))
     elif db.get_bind().dialect.name == "sqlite":  # take the write lock first so concurrent appenders can't fork the chain
