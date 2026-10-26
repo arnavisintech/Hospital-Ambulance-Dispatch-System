@@ -94,6 +94,10 @@ class Autopilot:
                 seen.add(amb.id)
                 try:
                     self._step(db, amb, reqs.get(amb.id), now)
+                except HTTPException as e:  # the trip changed under us (e.g. cancelled mid-accept): expected, not a fault
+                    db.rollback()
+                    log.info("autopilot: ambulance %s step skipped (%s %s)", amb.id, e.status_code, e.detail)
+                    self.units.pop(amb.id, None)
                 except Exception:  # noqa: BLE001 - one bad unit must not stop the others
                     db.rollback()
                     log.exception("autopilot step failed for ambulance %s", amb.id)

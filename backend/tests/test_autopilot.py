@@ -165,3 +165,20 @@ def test_idle_units_get_gps_heartbeat(client, scene):
     ap = autopilot.Autopilot(speedup=4, rng=random.Random(8))
     ap.tick(0.0)
     assert amb_row(s["amb"]).location_updated_at.year > 2020  # stays dispatchable
+
+
+def test_an_offer_that_vanished_is_not_logged_as_a_failure(client, scene, monkeypatch, caplog):
+    """PostgreSQL load test: a call cancelled while the simulated crew accepts it gets a 409 from accept_offer. That is
+    an expected race, not an error: no traceback, and the unit is simply reset."""
+    import logging
+
+    from fastapi import HTTPException
+    ap = autopilot.Autopilot(speedup=20, rng=random.Random(9))
+
+    def gone(*a, **kw):
+        raise HTTPException(409, "No pending offer for this request (status cancelled)")
+    monkeypatch.setattr(ap, "_step", gone)
+    with caplog.at_level(logging.INFO, logger="hads.autopilot"):
+        ap.tick(1000.0)
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert any("409" in r.getMessage() or "cancelled" in r.getMessage() for r in caplog.records)
