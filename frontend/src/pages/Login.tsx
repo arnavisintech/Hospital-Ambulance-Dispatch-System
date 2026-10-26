@@ -42,6 +42,9 @@ export default function Login() {
     return () => { live = false; };
   }, []);
   const demos = cfg?.demo_mode && cfg.demo_password ? cfg.demo_accounts : [];
+  // Hospital and crew cards can sign in as any hospital or ambulance: dispatch picks the best one for each call.
+  const [picked, setPicked] = useState<Record<string, string>>({});
+  const choicesFor = (role: string) => (role === 'hospital_staff' || role === 'crew' ? cfg?.demo_choices?.[role] ?? [] : []);
 
   const doLogin = async (id: string, pw: string, key: string) => {
     setBusy(key);
@@ -101,13 +104,15 @@ export default function Login() {
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Demo accounts">
             {demos.map((d) => {
               const look = ROLE_LOOK[d.role] ?? FALLBACK_LOOK;   // a role added server-side must not break sign-in
+              const choices = choicesFor(d.role);
+              const email = picked[d.role] ?? d.email;
               return (
-                <li key={d.email}>
+                <li key={d.email} className="flex flex-col gap-1.5">
                   <button
                     type="button"
                     disabled={!!busy}
-                    onClick={() => void doLogin(d.email, cfg!.demo_password!, d.email)}
-                    aria-label={`Sign in as demo ${d.label} (${d.email})`}
+                    onClick={() => void doLogin(email, cfg!.demo_password!, d.email)}
+                    aria-label={`Sign in as demo ${d.label} (${email})`}
                     className={cn(
                       'press flex h-full w-full flex-col items-start gap-2 rounded-lg border border-line bg-surface p-3 text-left shadow-card transition',
                       'hover:border-ink-400 hover:shadow-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-60',
@@ -121,6 +126,16 @@ export default function Login() {
                       <span className="block text-xs text-ink-500">{d.hint}</span>
                     </span>
                   </button>
+                  {choices.length > 1 && (
+                    <select
+                      value={email}
+                      onChange={(e) => setPicked((p) => ({ ...p, [d.role]: e.target.value }))}
+                      aria-label={d.role === 'crew' ? 'Choose demo ambulance' : 'Choose demo hospital'}
+                      className="w-full truncate rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    >
+                      {choices.map((c) => <option key={c.email} value={c.email}>{c.label}</option>)}
+                    </select>
+                  )}
                 </li>
               );
             })}

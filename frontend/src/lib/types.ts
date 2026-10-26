@@ -84,7 +84,8 @@ export type RoutePhase = 'to_patient' | 'to_hospital';
 export interface TimelineEvent { status: string; at: string; note?: string | null }
 
 /** Remaining leg from the ambulance's current position. */
-export interface TrackingRoute { phase: RoutePhase | null; polyline: LatLng[]; distance_km: number; eta_seconds: number }
+/** provider "haversine" = straight-line estimate (road router unavailable); "osrm" = real roads. */
+export interface TrackingRoute { phase: RoutePhase | null; polyline: LatLng[]; distance_km: number; eta_seconds: number; provider?: string | null }
 export interface CrewContact { name: string; phone?: string | null; initials: string }
 export interface ShareLink { token: string; url: string }
 export interface BillSummary { id: number; amount: number; payment_status: string; insurance_claim_status?: string | null }
@@ -138,7 +139,7 @@ export interface RouteStep {
 }
 export interface RouteOut {
   phase: RoutePhase; steps: RouteStep[]; polyline: LatLng[]; distance_km: number; eta_seconds: number;
-  bearing_deg?: number | null;
+  bearing_deg?: number | null; provider?: string | null;
 }
 
 export interface AmbulanceBrief {
@@ -240,4 +241,9 @@ export interface PlaceResult { label: string; lat: number; lng: number }
 /* ---------------------------------------------------------------- client config (GET /public/config) */
 
 export interface DemoAccount { role: Role; label: string; email: string; hint: string }
-export interface ClientConfig { demo_mode: boolean; demo_password: string | null; demo_accounts: DemoAccount[] }
+/** Demo only: one login per hospital and per ambulance, so a presenter can open the one a trip was sent to. */
+export interface DemoChoice { email: string; label: string }
+export interface ClientConfig {
+  demo_mode: boolean; demo_password: string | null; demo_accounts: DemoAccount[];
+  demo_choices?: { hospital_staff: DemoChoice[]; crew: DemoChoice[] };
+}

@@ -47,3 +47,40 @@ def test_demo_mode_is_a_production_problem():
     s = Settings(_env_file=None, app_env="production", jwt_secret="x" * 48, cors_origins="https://a.b",
                  data_encryption_key="k", demo_mode=True)
     assert any("DEMO_MODE" in p for p in s.production_problems())
+
+
+def test_demo_lists_a_login_for_every_hospital_and_ambulance(demo):
+    """Demo walk-through: dispatch picks the best hospital and ambulance, but the Hospital and Crew demo cards were
+    fixed to staff1 / crew1, so the presenter could not open the hospital (or crew) a trip was actually sent to and
+    complete the handover. Demo mode now offers one login per hospital and per ambulance."""
+    from app.db import SessionLocal
+    from app.models import Ambulance, Hospital
+    cfg = demo.get("/api/public/config").json()
+    choices = cfg["demo_choices"]
+    with SessionLocal() as db:
+        n_hosp = db.query(Hospital).count()
+        n_amb = db.query(Ambulance).count()
+        hospital_names = {h.id: h.name for h in db.query(Hospital)}
+        regs = {a.id: a.registration_number for a in db.query(Ambulance)}
+    assert len(choices["hospital_staff"]) == n_hosp and len(choices["crew"]) == n_amb
+    for role, key, names in (("hospital_staff", "hospital_id", hospital_names), ("crew", "ambulance_id", regs)):
+        for c in choices[role][:3] + choices[role][-1:]:
+            tok = demo.post("/api/auth/login", json={"identifier": c["email"], "password": cfg["demo_password"]}).json()["token"]
+            me = demo.get("/api/auth/me", headers={"Authorization": "Bearer " + tok}).json()
+            assert me["role"] == role and names[me[key]] in c["label"], c   # the label names what you sign in to
+
+
+def test_demo_choices_never_list_accounts_an_admin_created(demo):
+    from app.db import SessionLocal
+    from app.models import Hospital, HospitalStaffProfile, Role, User
+    from app.security import hash_password
+    with SessionLocal() as db:
+        h = db.query(Hospital).first()
+        u = User(name="Real Person", email="real.person@hospital.example", role=Role.hospital_staff,
+                 password_hash=hash_password("not-the-demo-password"), is_active=True)
+        db.add(u)
+        db.flush()
+        db.add(HospitalStaffProfile(user_id=u.id, hospital_id=h.id))
+        db.commit()
+    emails = [c["email"] for c in demo.get("/api/public/config").json()["demo_choices"]["hospital_staff"]]
+    assert "real.person@hospital.example" not in emails

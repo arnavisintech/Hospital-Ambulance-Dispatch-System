@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ClientConfig } from '../lib/types';
@@ -60,5 +60,30 @@ describe('<Login> resilience (final review minor)', () => {
     config = { ...DEMO, demo_accounts: [...DEMO.demo_accounts, { role: 'auditor' as never, label: 'Auditor', email: 'aud@hads.in', hint: 'New' }] };
     renderLogin();
     expect(await screen.findAllByRole('button', { name: /sign in as demo/i })).toHaveLength(7);
+  });
+});
+
+describe('<Login> demo hospital and ambulance choice', () => {
+  afterEach(() => { login.mockClear(); });
+
+  it('signs in as the hospital or ambulance picked, so a demo can open the one a trip was sent to', async () => {
+    config = {
+      ...DEMO,
+      demo_choices: {
+        hospital_staff: [{ email: 'staff1@hads.in', label: 'Rajiv Gandhi Government General Hospital' }, { email: 'staff7@hads.in', label: 'Gleneagles Global Health City' }],
+        crew: [{ email: 'crew1@hads.in', label: 'TN-09-AM-4137 · BLS · T. Nagar Station' }, { email: 'crew12@hads.in', label: 'TN-07-AM-4248 · ALS · Adyar Station' }],
+      },
+    };
+    renderLogin();
+    const hospital = await screen.findByLabelText(/choose demo hospital/i);
+    expect((hospital as HTMLSelectElement).value).toBe('staff1@hads.in');   // unchanged default
+    fireEvent.change(hospital, { target: { value: 'staff7@hads.in' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in as demo hospital/i }));
+    await waitFor(() => expect(login).toHaveBeenCalledWith('staff7@hads.in', 'pw-from-server'));
+    cleanup();   // a successful sign-in navigates away; start again for the crew card
+    renderLogin();
+    fireEvent.change(await screen.findByLabelText(/choose demo ambulance/i), { target: { value: 'crew12@hads.in' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in as demo crew/i }));
+    await waitFor(() => expect(login).toHaveBeenCalledWith('crew12@hads.in', 'pw-from-server'));
   });
 });
