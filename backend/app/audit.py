@@ -3,7 +3,7 @@ import hashlib
 import json
 from datetime import timezone
 
-from sqlalchemy import select, text
+from sqlalchemy import event, select, text
 from sqlalchemy.orm import Session
 
 from .models import AUDIT_TRIGGERS, AuditLog, utcnow
@@ -14,24 +14,39 @@ def _digest(prev: str, ts: str, user_id, action: str, entity: str, entity_id, de
     return hashlib.sha256(body.encode()).hexdigest()
 
 
-def log(db: Session, action: str, entity: str, entity_id=None, user_id: int | None = None, details: dict | None = None) -> AuditLog:
-    """Add an audit row to the current session (caller commits)."""
-    details = details or {}
+_PENDING = "hads_pending_audit"
+
+
+def log(db: Session, action: str, entity: str, entity_id=None, user_id: int | None = None, details: dict | None = None) -> None:
+    """Record an audit entry in the current transaction (caller commits). The entry is appended to the hash chain at
+    commit (see _append_pending), so the chain-wide lock is held only for the append and the commit itself, never
+    across the rest of the caller's work: holding it mid-transaction made concurrent intakes and dispatch convoy."""
+    db.info.setdefault(_PENDING, []).append(
+        (utcnow(), user_id, action, entity, str(entity_id) if entity_id is not None else None, details or {}))
+
+
+@event.listens_for(Session, "before_commit")
+def _append_pending(db: Session) -> None:
+    pending = db.info.pop(_PENDING, None)
+    if not pending:
+        return
     if db.get_bind().dialect.name == "postgresql":  # serialise chain appends across workers until commit
         db.execute(text("select pg_advisory_xact_lock(7242001)"))
     elif db.get_bind().dialect.name == "sqlite":  # take the write lock first so concurrent appenders can't fork the chain
         db.execute(text("update platform_settings set key = key where 0"))
-    last =db.execute(select(AuditLog).order_by(AuditLog.id.desc()).limit(1)).scalar_one_or_none()
+    last = db.execute(select(AuditLog).order_by(AuditLog.id.desc()).limit(1)).scalar_one_or_none()
     prev = last.hash if last else ""
-    ts = utcnow()
-    row = AuditLog(ts=ts, user_id=user_id, action=action, entity=entity,
-                   entity_id=str(entity_id) if entity_id is not None else None,
-                   details=details, prev_hash=prev,
-                   hash=_digest(prev, ts.isoformat(), user_id, action, entity,
-                                str(entity_id) if entity_id is not None else None, details))
-    db.add(row)
-    db.flush()
-    return row
+    for ts, user_id, action, entity, entity_id, details in pending:
+        h = _digest(prev, ts.isoformat(), user_id, action, entity, entity_id, details)
+        db.add(AuditLog(ts=ts, user_id=user_id, action=action, entity=entity, entity_id=entity_id,
+                        details=details, prev_hash=prev, hash=h))
+        db.flush()   # one at a time: ids follow chain order
+        prev = h
+
+
+@event.listens_for(Session, "after_rollback")
+def _discard_pending(db: Session) -> None:
+    db.info.pop(_PENDING, None)   # entries belong to the transaction that was rolled back
 
 
 def drop_immutability_triggers(db: Session) -> None:
