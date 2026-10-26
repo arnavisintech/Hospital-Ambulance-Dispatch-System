@@ -253,3 +253,28 @@ def test_dispatch_never_waits_when_a_cancel_locks_the_request_mid_dispatch(world
         if held:
             held["lock"][1].rollback()
             held["lock"][0].close()
+
+
+def test_gps_ping_never_waits_on_a_request_a_cancel_holds(world):
+    """PostgreSQL load test: a cancel locks the request then updates its ambulance; a GPS ping updated the ambulance
+    then the request's ETA. Opposite lock orders: PostgreSQL aborted one (DeadlockDetected, 500). The ping's ETA is
+    advisory and refreshed every few seconds, so it skips a busy request instead of waiting."""
+    _pg_only()
+    from app.models import Ambulance
+    from app.services import crew_actions
+    amb_id = _fleet(world, 1)[0]
+    with SessionLocal() as db:
+        r = EmergencyRequest(lat=PATIENT[0], lng=PATIENT[1], severity=3, status=RequestStatus.en_route, ambulance_id=amb_id)
+        db.add(r)
+        db.commit()
+        rid = r.id
+    conn, tx = _held_row_lock(rid)
+
+    def ping():
+        with SessionLocal() as db:
+            crew_actions.record_location(db, db.get(Ambulance, amb_id), PATIENT[0] + 0.002, PATIENT[1])
+    try:
+        assert _returns_within(ping), "a GPS ping waited on a request row held by a cancel"
+    finally:
+        tx.rollback()
+        conn.close()

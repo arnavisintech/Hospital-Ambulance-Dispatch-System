@@ -70,9 +70,14 @@ def record_location(db: Session, amb: Ambulance, lat: float, lng: float, *, now=
     data = {"ambulance_id": amb.id, "lat": lat, "lng": lng, "heading_deg": heading, "status": amb.status.value,
             "ts": now.isoformat()}
     if req is not None:
-        eta = trips.recompute_eta(db, req)
-        leg = trips.legs.get(req.id)
-        data.update(request_id=req.id, eta_seconds=eta, phase=leg.phase if leg else None)
+        data["request_id"] = req.id
+        # The ETA is advisory and refreshed on every ping. Never wait for the request row: a cancel holds it and then
+        # updates this ambulance, so waiting here would deadlock (opposite lock order). Busy -> skip the ETA this time.
+        locked = dispatch.lock_request(db, req.id, skip_locked=True)
+        if locked is not None:
+            eta = trips.recompute_eta(db, locked)
+            leg = trips.legs.get(locked.id)
+            data.update(eta_seconds=eta, phase=leg.phase if leg else None)
     db.commit()
     events.publish("controller", "ambulance.location", data)
     if req is not None:

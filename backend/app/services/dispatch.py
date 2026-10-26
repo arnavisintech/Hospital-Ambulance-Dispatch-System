@@ -226,6 +226,7 @@ def _drain() -> None:
             except Exception:  # noqa: BLE001 - one bad request must not block the others
                 db.rollback()
                 log.exception("dispatch failed for request %s", r.id)
+    _log_slow("dispatch pass", len(pending), started)
 
 
 def retry_escalated() -> list[int]:
@@ -245,7 +246,15 @@ def retry_escalated() -> list[int]:
             db.flush()   # _dispatch_one re-reads the request; it must see this transition
             if _dispatch_one(db, r, started, silent_if_none=True):
                 done.append(r.id)
+    _log_slow("escalation retry pass", len(rows), started)
     return done
+
+
+def _log_slow(what: str, n: int, started: float) -> None:
+    """A pass holds _LOCK, so every other dispatch decision waits for it: surface slow ones (NFR1 target is 8 s)."""
+    took = time.perf_counter() - started
+    if took >= 1.0:
+        log.warning("slow %s: %d requests in %.2f s (dispatch lock held throughout)", what, n, took)
 
 
 def release_offer(db: Session, req: EmergencyRequest, status: AttemptStatus, user_id: int | None,
