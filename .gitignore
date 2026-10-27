@@ -24,3 +24,6 @@ backend/data/*
 
 # Git Bash crash dumps
 *.stackdump
+
+# Windows crash dumps
+*.stackdump

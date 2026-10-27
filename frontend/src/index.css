@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ---------------------------------------------------------------------------------------------
- * HADS design tokens — docs/DESIGN_SYSTEM.md. RGB triplets so Tailwind opacity modifiers work.
+ * HADS design tokens. RGB triplets so Tailwind opacity modifiers work.
  * In raw SVG/HTML strings (Leaflet divIcons) use `rgb(var(--brand-500))`.
  * ------------------------------------------------------------------------------------------- */
 :root {

@@ -56,7 +56,7 @@ def main() -> int:
     a = ap.parse_args()
     url = get_settings().database_url
     if not url.startswith("sqlite"):
-        print("DATABASE_URL is not SQLite; use the PostgreSQL backup procedure (docs/OPERATIONS.md)", file=sys.stderr)
+        print("DATABASE_URL is not SQLite; use the PostgreSQL backup procedure (scripts/restore-db.sh)", file=sys.stderr)
         return 2
     try:
         print(backup(url, a.dest, a.keep))

@@ -1,6 +1,6 @@
 # HADS v2 UI foundation — component guide
 
-Binding visual spec: `docs/DESIGN_SYSTEM.md`. Live review page: **`/dev/ui`** (no login needed; every component and
+Design tokens: `src/index.css` and `tailwind.config.js`. Live review page: **`/dev/ui`** (no login needed; every component and
 map primitive in all states). Everything is light-only, typed, and keyboard/screen-reader accessible.
 
 ```ts

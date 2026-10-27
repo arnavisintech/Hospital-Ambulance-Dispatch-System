@@ -8,7 +8,7 @@ import { fmtRelative } from '../../../lib/format';
 interface ApiClient { id: number; name: string; is_active: boolean; created_at: string | null; last_used_at: string | null }
 interface IssuedKey { name: string; api_key: string }
 
-/** NFR8: API keys for external dispatch centres (108/102) calling the interop API (docs/INTEROP.md). */
+/** NFR8: API keys for external dispatch centres (108/102) calling the interop API (/api/interop). */
 export function ApiClientsCard() {
   const { success, error } = useToast();
   const list = useAsync(() => get<ApiClient[]>('/admin/api-clients'), []);

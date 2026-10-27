@@ -6,7 +6,7 @@ road-time ETA, checks bed, ICU and specialist capacity at nearby hospitals befor
 the trip until the patient is handed over. Completed trips feed a demand model, which uses incident history, households
 and age groups to predict where the next emergencies will come from.
 
-Pilot city: Chennai. Requirements are traced in [`docs/TRACEABILITY.md`](docs/TRACEABILITY.md).
+Pilot city: Chennai.
 
 | Role | Uses HADS to |
 |---|---|
@@ -86,8 +86,8 @@ refuses to start in demo mode).
    `python backend/scripts/create_admin.py`.
 
 Only the web front end is published (ports 80/443). The API, database and router are reachable only inside the Compose
-network. Day-to-day operation, backups, restore and monitoring: [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
-Security model and DPDP: [`docs/SECURITY.md`](docs/SECURITY.md). Per-role guide: [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md).
+network. Backups: `docker compose exec backup backup.sh`; restore to the latest state with
+`COMPOSE="docker compose" scripts/restore-db.sh latest`.
 
 ## Configuration
 
@@ -129,8 +129,8 @@ npx vitest run && npx tsc --noEmit && npx eslint src --max-warnings 0 && npm run
   `tests/test_migrations.py` fails if the models and migrations drift apart.
 - **API changes:** run `python backend/scripts/export_openapi.py`. `tests/test_openapi_current.py` keeps
   [`docs/openapi.json`](docs/openapi.json) current, and that file is the API contract.
-- **UI:** use the components in `frontend/src/components/ui` and the tokens in
-  [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md). `theme.test.ts` and `contrast.test.ts` enforce them.
+- **UI:** use the components in `frontend/src/components/ui` and the design tokens in
+  `frontend/src/index.css` and `frontend/tailwind.config.js`. `theme.test.ts` and `contrast.test.ts` enforce them.
 
 ## Known limitations
 
@@ -143,8 +143,8 @@ These are deliberate scope decisions; HADS does not claim them.
 - **No SMS or push notifications.** Notifications are in-app, delivered live over websockets and kept for offline devices.
 - **No payment gateway or insurer integration.** Hospital staff record payments; insurance claims are tracked internally.
 - **The IVR path is operator data entry.** There is no telephony line.
-- **The 108/102 interface is a neutral API** ([`docs/INTEROP.md`](docs/INTEROP.md)) that a government system must be
-  configured to call.
+- **The 108/102 interface is a neutral API** (`/api/interop`, described in `docs/openapi.json`) that a government
+  system must be configured to call.
 - **Population data is a synthetic estimate** until an admin imports real census figures (Settings → Demographics).
   The app labels it as such wherever it is shown.
 - **Crew GPS is reported while the app is open.** A web app cannot report location in the background.

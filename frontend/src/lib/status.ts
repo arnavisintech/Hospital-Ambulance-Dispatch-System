@@ -1,5 +1,5 @@
 /**
- * Single source of truth for status / severity / incident presentation (docs/DESIGN_SYSTEM.md).
+ * Single source of truth for status / severity / incident presentation.
  * Status is ALWAYS communicated with colour + icon + label — use <StatusPill> / <SeverityBadge> or these helpers.
  */
 import {

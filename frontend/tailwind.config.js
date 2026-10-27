@@ -1,5 +1,5 @@
 /**
- * HADS design tokens (docs/DESIGN_SYSTEM.md). Colour values live as RGB triplets in CSS variables
+ * HADS design tokens. Colour values live as RGB triplets in CSS variables
  * (src/index.css) so every token supports Tailwind's `/opacity` modifier, e.g. `bg-brand-500/10`.
  * Never hard-code hex in components — use these tokens (or `rgb(var(--brand-500))` inside raw SVG/HTML).
  */
